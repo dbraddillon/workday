@@ -19,14 +19,13 @@
         "height": 560,
         "resizable": false,
         "decorations": false,
-        "transparent": true,
+        "transparent": false,
         "alwaysOnTop": true,
         "skipTaskbar": true,
         "visible": false,
         "center": false,
         "focus": true,
-        "hiddenTitle": true,
-        "titleBarStyle": "Overlay"
+        "hiddenTitle": true
       }
     ],
     "security": {

@@ -144,6 +144,17 @@ export function SettingsPanel({
             <option value="7d">Last 7 days</option>
           </select>
         </label>
+        <label className="settings-field">
+          Standup format
+          <select
+            value={form.default_formatter}
+            onChange={(e) => set("default_formatter", e.target.value)}
+          >
+            <option value="default">Grouped by status (bullets)</option>
+            <option value="thread">Standup thread reply (5 prompts)</option>
+            <option value="plain">Plain text</option>
+          </select>
+        </label>
         <div className="settings-row toggle-row">
           <label title="Refine standup drafts with your local Claude CLI (Bedrock)">
             AI polish standups by default
@@ -165,6 +176,40 @@ export function SettingsPanel({
           />
         </div>
       </section>
+
+      {form.default_formatter === "thread" && (
+        <section className="settings-section">
+          <h3>Standup thread defaults</h3>
+          <p className="settings-hint">
+            Prefilled answers for the thread prompts. "Working on" and "Blockers"
+            come from Jira; these three you set here (editable per post).
+          </p>
+          <label className="settings-field">
+            🌅 How are you doing?
+            <input
+              type="text"
+              value={form.thread_doing}
+              onChange={(e) => set("thread_doing", e.target.value)}
+            />
+          </label>
+          <label className="settings-field">
+            🫛 Any pairing opportunities?
+            <input
+              type="text"
+              value={form.thread_pairing}
+              onChange={(e) => set("thread_pairing", e.target.value)}
+            />
+          </label>
+          <label className="settings-field">
+            🙌 Anything for post scrum?
+            <input
+              type="text"
+              value={form.thread_post_scrum}
+              onChange={(e) => set("thread_post_scrum", e.target.value)}
+            />
+          </label>
+        </section>
+      )}
 
       {error && <div className="settings-error">{error}</div>}
 

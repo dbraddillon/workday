@@ -48,23 +48,30 @@ impl JiraConnector {
     const FIELDS: &'static str =
         "summary,status,assignee,reporter,project,updated,created,labels";
 
-    /// Run a JQL search with pagination, optionally expanding changelog.
+    /// Run a JQL search with cursor pagination, optionally expanding changelog.
+    ///
+    /// Uses the cursor-based `/rest/api/3/search/jql` API. The classic
+    /// `/rest/api/3/search` (startAt/total) was removed by Atlassian
+    /// (410 Gone / CHANGE-2046). Pagination follows `nextPageToken` until the
+    /// response reports `isLast: true` (or omits a further token).
     async fn search(&self, jql: &str, expand_changelog: bool) -> Result<Vec<Value>, String> {
-        let mut start_at = 0u64;
-        let page = 50u64;
+        let page = 100u64; // max the endpoint allows
         let mut all: Vec<Value> = Vec::new();
+        let mut next_page_token: Option<String> = None;
 
         loop {
             let mut url = format!(
-                "{}/rest/api/3/search?jql={}&fields={}&startAt={}&maxResults={}",
+                "{}/rest/api/3/search/jql?jql={}&fields={}&maxResults={}",
                 self.base_url,
                 urlencoding(jql),
                 Self::FIELDS,
-                start_at,
                 page
             );
             if expand_changelog {
                 url.push_str("&expand=changelog");
+            }
+            if let Some(token) = &next_page_token {
+                url.push_str(&format!("&nextPageToken={}", urlencoding(token)));
             }
 
             let resp = self
@@ -94,9 +101,15 @@ impl JiraConnector {
             let got = issues.len() as u64;
             all.extend(issues);
 
-            let total = body.get("total").and_then(|v| v.as_u64()).unwrap_or(0);
-            start_at += got;
-            if got == 0 || start_at >= total {
+            // Cursor pagination: continue only while a next token is present.
+            // `isLast` is authoritative when present; otherwise fall back to the
+            // token's absence.
+            let is_last = body.get("isLast").and_then(|v| v.as_bool());
+            next_page_token = body
+                .get("nextPageToken")
+                .and_then(|v| v.as_str())
+                .map(String::from);
+            if got == 0 || is_last == Some(true) || next_page_token.is_none() {
                 break;
             }
         }

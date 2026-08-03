@@ -90,6 +90,18 @@ pub struct StandupSection {
     pub items: Vec<StandupItem>,
 }
 
+/// Free-form, user-authored standup answers that aren't derived from work items
+/// (how you're doing, pairing availability, post-scrum notes). Kept in the model
+/// so it stays format-agnostic — a formatter decides how/whether to render them.
+/// Optional so formatters that don't need it (and older serialized drafts) are
+/// unaffected.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct StandupNarrative {
+    pub doing: String,
+    pub pairing: String,
+    pub post_scrum: String,
+}
+
 /// The normalized, format-agnostic standup model. Formatters consume this.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StandupModel {
@@ -97,6 +109,10 @@ pub struct StandupModel {
     pub sections: Vec<StandupSection>,
     /// Free-form markers the user or a future source might surface.
     pub blockers: Vec<String>,
+    /// User-authored freeform answers (defaults sourced from settings). Present
+    /// for thread-style formatters; ignored by others.
+    #[serde(default)]
+    pub narrative: StandupNarrative,
 }
 
 /// A rendered draft ready for review/delivery.

@@ -23,6 +23,19 @@ pub struct AppSettings {
     /// If true, the app serves fake data and never calls Jira. Great for dev
     /// and for a first-run demo before credentials are entered.
     pub fake_data_mode: bool,
+    // --- Standup thread defaults (used by the "thread" formatter) ---
+    // These fill the freeform prompts the team's standup thread asks for. The
+    // "working on" and "blockers" lines are derived from Jira; these three are
+    // user-authored defaults, edited in Settings.
+    /// Default answer for ":city_sunrise: How are you doing?"
+    #[serde(default = "default_thread_doing")]
+    pub thread_doing: String,
+    /// Default answer for ":two-peas-in-a-pod: Any pairing opportunities?"
+    #[serde(default = "default_thread_pairing")]
+    pub thread_pairing: String,
+    /// Default answer for ":high-five: Anything for post scrum?"
+    #[serde(default = "default_thread_post_scrum")]
+    pub thread_post_scrum: String,
     /// Whether a Jira token is present in the Keychain (derived, never stored).
     #[serde(default)]
     pub has_jira_token: bool,
@@ -45,8 +58,21 @@ impl Default for AppSettings {
             ai_polish_enabled: false,
             fake_data_mode: true, // start in fake mode until the user configures Jira
             has_jira_token: false,
+            thread_doing: default_thread_doing(),
+            thread_pairing: default_thread_pairing(),
+            thread_post_scrum: default_thread_post_scrum(),
         }
     }
+}
+
+fn default_thread_doing() -> String {
+    ":batman: :thumbsup_all:".to_string()
+}
+fn default_thread_pairing() -> String {
+    ":available:".to_string()
+}
+fn default_thread_post_scrum() -> String {
+    "Nope".to_string()
 }
 
 // ---------------------------------------------------------------------------

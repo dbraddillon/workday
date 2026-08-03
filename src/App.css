@@ -45,7 +45,10 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
   font-size: 13px;
   color: var(--text);
-  background: transparent;
+  /* Opaque window (see tauri.conf.json): the frosted-glass look relied on a
+     transparent window, which rendered invisible on some macOS setups. Back the
+     body with the solid color so the popover always paints. */
+  background: var(--bg-solid);
   -webkit-font-smoothing: antialiased;
   user-select: none;
 }
@@ -284,6 +287,33 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.standup-narrative {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 4px;
+  border-top: 1px solid var(--border);
+  margin-top: 4px;
+}
+.narrative-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.narrative-field > span {
+  flex: 0 0 84px;
+}
+.narrative-field input {
+  flex: 1;
+  min-width: 0;
+}
+.narrative-blockers {
+  font-size: 12px;
+  color: var(--text-dim);
+  padding-top: 2px;
 }
 .standup-controls {
   display: flex;

@@ -4,7 +4,7 @@
 use crate::config::{self, AppSettings};
 use crate::db::{repo, settings_repo, Db};
 use crate::delivery::{DeliveryMethod, DeliveryResult, SlackDeliveryService, V1DeliveryService};
-use crate::model::{Issue, StandupDraft, StandupModel, SyncStatus, TimeRange};
+use crate::model::{Issue, StandupDraft, StandupModel, StandupNarrative, SyncStatus, TimeRange};
 use crate::standup::summarizer::{
     ClaudeCliSummarizer, PassthroughSummarizer, Summarizer,
 };
@@ -16,26 +16,45 @@ use tauri::{Manager, State};
 // ------------------------------- settings ----------------------------------
 
 #[tauri::command]
-pub fn get_settings(db: State<Db>) -> Result<AppSettings, String> {
+pub fn get_settings(db: State<Db>, state: State<AppState>) -> Result<AppSettings, String> {
     let conn = db.0.lock().map_err(|_| "db lock poisoned")?;
-    Ok(settings_repo::load(&conn))
+    let mut s = settings_repo::load(&conn);
+    s.has_jira_token = state.has_jira_token(); // from cache, not the Keychain
+    Ok(s)
 }
 
 #[tauri::command]
-pub fn save_settings(db: State<Db>, settings: AppSettings) -> Result<AppSettings, String> {
+pub fn save_settings(
+    db: State<Db>,
+    state: State<AppState>,
+    settings: AppSettings,
+) -> Result<AppSettings, String> {
     let conn = db.0.lock().map_err(|_| "db lock poisoned")?;
+    // If the data source changed (esp. fake-data mode toggled off), wipe the
+    // cache so stale sample issues don't mix with real Jira data — both share
+    // source='jira' and would otherwise never age out.
+    let prev = settings_repo::load(&conn);
+    if prev.fake_data_mode != settings.fake_data_mode {
+        repo::clear_issue_cache(&conn).map_err(|e| e.to_string())?;
+    }
     settings_repo::save(&conn, &settings).map_err(|e| e.to_string())?;
-    Ok(settings_repo::load(&conn))
+    let mut s = settings_repo::load(&conn);
+    s.has_jira_token = state.has_jira_token();
+    Ok(s)
 }
 
 /// Store/replace the Jira API token in the Keychain. Empty string clears it.
+/// Updates the in-memory cache so nothing has to re-read the Keychain.
 #[tauri::command]
-pub fn set_jira_token(token: String) -> Result<bool, String> {
+pub fn set_jira_token(state: State<AppState>, token: String) -> Result<bool, String> {
     if token.trim().is_empty() {
         config::delete_jira_token()?;
+        state.set_jira_token(None);
         Ok(false)
     } else {
-        config::set_jira_token(token.trim())?;
+        let t = token.trim().to_string();
+        config::set_jira_token(&t)?;
+        state.set_jira_token(Some(t));
         Ok(true)
     }
 }
@@ -63,12 +82,16 @@ pub fn get_sync_status(db: State<Db>) -> Result<SyncStatus, String> {
 
 /// Manual refresh — runs a sync pass now.
 #[tauri::command]
-pub async fn refresh_now(db: State<'_, Db>) -> Result<SyncStatus, String> {
+pub async fn refresh_now(
+    db: State<'_, Db>,
+    state: State<'_, AppState>,
+) -> Result<SyncStatus, String> {
+    let token = state.jira_token();
     let settings = {
         let conn = db.0.lock().map_err(|_| "db lock poisoned")?;
         settings_repo::load(&conn)
     };
-    let _ = sync::run_sync(&db, &settings).await; // errors are recorded, non-fatal
+    let _ = sync::run_sync(&db, &settings, token).await; // errors are recorded, non-fatal
     let conn = db.0.lock().map_err(|_| "db lock poisoned")?;
     repo::sync_status(&conn).map_err(|e| e.to_string())
 }
@@ -85,12 +108,20 @@ pub fn build_standup_model(db: State<Db>, range: String) -> Result<StandupModel,
         .map_err(|e| e.to_string())?;
     let activity = repo::activity_in_range(&conn, &start.to_rfc3339(), &end.to_rfc3339())
         .map_err(|e| e.to_string())?;
+    // Seed the freeform narrative from the user's saved standup defaults; the UI
+    // can edit these before rendering.
+    let settings = settings_repo::load(&conn);
+    let narrative = StandupNarrative {
+        doing: settings.thread_doing,
+        pairing: settings.thread_pairing,
+        post_scrum: settings.thread_post_scrum,
+    };
     let range = TimeRange {
         start: start.to_rfc3339(),
         end: end.to_rfc3339(),
         label,
     };
-    Ok(compose(range, &issues, &activity))
+    Ok(compose(range, &issues, &activity, narrative))
 }
 
 /// Render a (possibly user-edited) model to a draft with the given formatter,
@@ -212,6 +243,7 @@ fn range_to_start(range: &str) -> chrono::DateTime<Utc> {
             .and_hms_opt(0, 0, 0)
             .map(|nd| chrono::DateTime::<Utc>::from_naive_utc_and_offset(nd, Utc))
             .unwrap_or(now - Duration::hours(24)),
+        "standup" => standup_start(),
         "24h" => now - Duration::hours(24),
         "3d" => now - Duration::days(3),
         "7d" => now - Duration::days(7),
@@ -219,14 +251,78 @@ fn range_to_start(range: &str) -> chrono::DateTime<Utc> {
     }
 }
 
+/// Day-aware "since last working day" start, resolved in **local** time then
+/// converted to UTC (the weekend boundary is a local-time concept).
+///
+/// Standup happens every weekday; the window should cover work since the start
+/// of the previous working day:
+///   - Mon → back to Fri 00:00 local (Fri + the weekend)
+///   - Sun → back to Fri 00:00 local (weekend catch-up)
+///   - Tue–Sat → back to the previous calendar day 00:00 local ("since yesterday")
+/// Pure day-math for the standup window: how many days back the window starts,
+/// given today's weekday. Mon/Sun → Friday, else yesterday. Split out so it's
+/// unit-testable without mocking the clock.
+fn standup_days_back(today: chrono::Weekday) -> i64 {
+    use chrono::Weekday;
+    match today {
+        Weekday::Mon => 3, // Fri
+        Weekday::Sun => 2, // Fri
+        _ => 1,            // yesterday
+    }
+}
+
+fn standup_start() -> chrono::DateTime<Utc> {
+    use chrono::{Datelike, Local};
+    let now_local = Local::now();
+    let start_date = now_local.date_naive() - Duration::days(standup_days_back(now_local.weekday()));
+    start_date
+        .and_hms_opt(0, 0, 0)
+        .and_then(|nd| nd.and_local_timezone(Local).single())
+        .map(|dt| dt.with_timezone(&Utc))
+        .unwrap_or_else(|| now_local.with_timezone(&Utc) - Duration::hours(24))
+}
+
 fn resolve_range(range: &str) -> (chrono::DateTime<Utc>, chrono::DateTime<Utc>, String) {
     let now = Utc::now();
-    let (start, label) = match range {
-        "today" => (range_to_start("today"), "Today"),
-        "24h" => (now - Duration::hours(24), "Last 24 hours"),
-        "3d" => (now - Duration::days(3), "Last 3 days"),
-        "7d" => (now - Duration::days(7), "Last 7 days"),
-        _ => (now - Duration::hours(24), "Last 24 hours"),
+    let (start, label): (chrono::DateTime<Utc>, String) = match range {
+        "today" => (range_to_start("today"), "Today".into()),
+        "standup" => (standup_start(), standup_label()),
+        "24h" => (now - Duration::hours(24), "Last 24 hours".into()),
+        "3d" => (now - Duration::days(3), "Last 3 days".into()),
+        "7d" => (now - Duration::days(7), "Last 7 days".into()),
+        _ => (now - Duration::hours(24), "Last 24 hours".into()),
     };
-    (start, now, label.to_string())
+    (start, now, label)
+}
+
+/// Human label for the day-aware standup window (mirrors `standup_start`).
+fn standup_label() -> String {
+    use chrono::{Datelike, Local, Weekday};
+    match Local::now().weekday() {
+        Weekday::Mon | Weekday::Sun => "Since Friday".into(),
+        _ => "Since yesterday".into(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::standup_days_back;
+    use chrono::Weekday;
+
+    #[test]
+    fn monday_reaches_back_to_friday() {
+        assert_eq!(standup_days_back(Weekday::Mon), 3);
+    }
+
+    #[test]
+    fn sunday_reaches_back_to_friday() {
+        assert_eq!(standup_days_back(Weekday::Sun), 2);
+    }
+
+    #[test]
+    fn weekdays_reach_back_one_day() {
+        for wd in [Weekday::Tue, Weekday::Wed, Weekday::Thu, Weekday::Fri, Weekday::Sat] {
+            assert_eq!(standup_days_back(wd), 1, "{wd:?} should look back 1 day");
+        }
+    }
 }

@@ -4,21 +4,26 @@
 //! displays). Polling in v1; the same `run_sync` is called by the background
 //! timer and the manual refresh button.
 
-use crate::config::{self, AppSettings};
+use crate::config::AppSettings;
 use crate::connector::{fake::FakeConnector, jira::JiraConnector, WorkSourceConnector};
 use crate::db::{repo, Db};
 use chrono::Utc;
 
 /// Run one sync pass. Returns the number of issues cached, or an error string.
-/// Always records a sync_run row.
-pub async fn run_sync(db: &Db, settings: &AppSettings) -> Result<i64, String> {
+/// Always records a sync_run row. The Jira token is passed in (from the cached
+/// AppState) so this never touches the Keychain — see AppState::jira_token.
+pub async fn run_sync(
+    db: &Db,
+    settings: &AppSettings,
+    jira_token: Option<String>,
+) -> Result<i64, String> {
     let started = Utc::now().to_rfc3339();
     let run_id = {
         let conn = db.0.lock().map_err(|_| "db lock poisoned")?;
         repo::start_sync_run(&conn, &started).map_err(|e| e.to_string())?
     };
 
-    let result = fetch_and_store(db, settings).await;
+    let result = fetch_and_store(db, settings, jira_token).await;
 
     let finished = Utc::now().to_rfc3339();
     {
@@ -37,7 +42,11 @@ pub async fn run_sync(db: &Db, settings: &AppSettings) -> Result<i64, String> {
     result
 }
 
-async fn fetch_and_store(db: &Db, settings: &AppSettings) -> Result<i64, String> {
+async fn fetch_and_store(
+    db: &Db,
+    settings: &AppSettings,
+    jira_token: Option<String>,
+) -> Result<i64, String> {
     // Gather (connector chosen from settings).
     let (in_prog, recent, activity) = if settings.fake_data_mode {
         let c = FakeConnector;
@@ -45,7 +54,7 @@ async fn fetch_and_store(db: &Db, settings: &AppSettings) -> Result<i64, String>
         let (rec, act) = c.fetch_recent().await?;
         (ip, rec, act)
     } else {
-        let token = config::get_jira_token()
+        let token = jira_token
             .ok_or("No Jira API token in Keychain. Add one in Settings.")?;
         if settings.jira_base_url.is_empty() || settings.jira_email.is_empty() {
             return Err("Jira base URL and email are required. See Settings.".into());

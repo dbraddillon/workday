@@ -4,8 +4,9 @@ import type { RecentRange, StandupModel } from "../types";
 import { EmptyState } from "./EmptyState";
 
 const RANGES: { id: RecentRange; label: string }[] = [
+  { id: "standup", label: "Since standup" },
   { id: "today", label: "Today" },
-  { id: "24h", label: "Since yesterday" },
+  { id: "24h", label: "24h" },
   { id: "3d", label: "3 days" },
   { id: "7d", label: "7 days" },
 ];
@@ -19,7 +20,7 @@ export function StandupTab({
   defaultFormatter: string;
   aiPolishDefault: boolean;
 }) {
-  const [range, setRange] = useState<RecentRange>("24h");
+  const [range, setRange] = useState<RecentRange>("standup");
   const [model, setModel] = useState<StandupModel | null>(null);
   const [draft, setDraft] = useState<string>("");
   const [aiPolish, setAiPolish] = useState(aiPolishDefault);
@@ -36,6 +37,16 @@ export function StandupTab({
   useEffect(() => {
     rebuild();
   }, [rebuild, dataVersion]);
+
+  const isThread = defaultFormatter === "thread";
+
+  const setNarrative = (
+    field: "doing" | "pairing" | "post_scrum",
+    value: string,
+  ) => {
+    if (!model) return;
+    setModel({ ...model, narrative: { ...model.narrative, [field]: value } });
+  };
 
   const toggleItem = (sectionKey: string, issueKey: string) => {
     if (!model) return;
@@ -117,6 +128,40 @@ export function StandupTab({
               </div>
             ))}
           </div>
+
+          {isThread && (
+            <div className="standup-narrative">
+              <label className="narrative-field">
+                <span title=":city_sunrise: How are you doing?">🌅 Doing</span>
+                <input
+                  type="text"
+                  value={model.narrative.doing}
+                  onChange={(e) => setNarrative("doing", e.target.value)}
+                />
+              </label>
+              <label className="narrative-field">
+                <span title=":two-peas-in-a-pod: Any pairing opportunities?">🫛 Pairing</span>
+                <input
+                  type="text"
+                  value={model.narrative.pairing}
+                  onChange={(e) => setNarrative("pairing", e.target.value)}
+                />
+              </label>
+              <label className="narrative-field">
+                <span title=":high-five: Anything for post scrum?">🙌 Post scrum</span>
+                <input
+                  type="text"
+                  value={model.narrative.post_scrum}
+                  onChange={(e) => setNarrative("post_scrum", e.target.value)}
+                />
+              </label>
+              {model.blockers.length > 0 && (
+                <div className="narrative-blockers" title="Derived from Jira status">
+                  🚧 Blockers: {model.blockers.join("; ")}
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="standup-controls">
             <label className="ai-toggle" title="Polish the draft with your local Claude CLI (Bedrock)">

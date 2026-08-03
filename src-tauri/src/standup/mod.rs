@@ -13,9 +13,19 @@ pub mod formatter;
 pub mod summarizer;
 
 use crate::model::{
-    ActivityEvent, Issue, StandupItem, StandupModel, StandupSection, TimeRange,
+    ActivityEvent, Issue, StandupItem, StandupModel, StandupNarrative, StandupSection, TimeRange,
 };
 use std::collections::BTreeMap;
+
+/// Heuristic: does this issue's status read as "blocked"? Jira has no blocked
+/// status category, so we match on the status name. Covers the common variants
+/// ("Blocked", "On Hold", "Waiting", "Impediment").
+fn looks_blocked(status_name: &str) -> bool {
+    let s = status_name.to_ascii_lowercase();
+    ["blocked", "on hold", "waiting", "impediment", "impeded"]
+        .iter()
+        .any(|needle| s.contains(needle))
+}
 
 /// Compose a normalized standup model from candidate issues + activity.
 ///
@@ -27,6 +37,7 @@ pub fn compose(
     range: TimeRange,
     issues: &[Issue],
     activity: &[ActivityEvent],
+    narrative: StandupNarrative,
 ) -> StandupModel {
     // Index activity by issue for quick note attachment.
     let mut notes_by_issue: BTreeMap<String, Vec<String>> = BTreeMap::new();
@@ -55,7 +66,13 @@ pub fn compose(
     };
     let mut todo = StandupSection { key: "todo".into(), title: "Up next".into(), items: vec![] };
 
+    // Derive blockers from Jira status names (best-effort; see looks_blocked).
+    let mut blockers: Vec<String> = Vec::new();
+
     for i in issues {
+        if looks_blocked(&i.status_name) {
+            blockers.push(format!("{} — {} ({})", i.issue_key, i.summary, i.status_name));
+        }
         let notes = notes_by_issue.get(&i.issue_key).cloned().unwrap_or_default();
         let item = StandupItem {
             issue_key: i.issue_key.clone(),
@@ -80,5 +97,13 @@ pub fn compose(
         .filter(|s| !s.items.is_empty())
         .collect();
 
-    StandupModel { time_range: range, sections, blockers: vec![] }
+    // Dedup blockers by issue key (same issue can arrive via both queries),
+    // preserving first-seen order.
+    let mut seen = std::collections::HashSet::new();
+    blockers.retain(|b| {
+        let key = b.split(" — ").next().unwrap_or(b).to_string();
+        seen.insert(key)
+    });
+
+    StandupModel { time_range: range, sections, blockers, narrative }
 }

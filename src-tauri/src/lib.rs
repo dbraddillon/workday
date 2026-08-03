@@ -16,6 +16,7 @@ mod sync;
 
 use db::{settings_repo, Db};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::RwLock;
 use std::time::Duration;
 use tauri::{
     menu::{Menu, MenuItem},
@@ -26,36 +27,111 @@ use tauri::{
 /// Small shared app state beyond the DB.
 pub struct AppState {
     ready: AtomicBool,
+    /// Cached Jira API token, read from the Keychain **once** at startup.
+    ///
+    /// Reading the Keychain triggers a macOS ACL prompt whenever the binary's
+    /// signature doesn't match the one that stored the secret (which is every
+    /// rebuild for an unsigned dev binary). We used to read it on every settings
+    /// load and every sync pass — dozens of prompts. Caching it here means at
+    /// most one prompt per launch, and "Always Allow" silences even that until
+    /// the next rebuild. `None` = no token stored.
+    jira_token: RwLock<Option<String>>,
 }
 
 impl AppState {
     fn new() -> Self {
-        AppState { ready: AtomicBool::new(false) }
+        AppState {
+            ready: AtomicBool::new(false),
+            jira_token: RwLock::new(config::get_jira_token()),
+        }
     }
     pub fn mark_ready(&self) {
         self.ready.store(true, Ordering::Relaxed);
     }
+    /// Cached token (no Keychain hit).
+    pub fn jira_token(&self) -> Option<String> {
+        self.jira_token.read().ok().and_then(|g| g.clone())
+    }
+    /// Whether a token is present, without touching the Keychain.
+    pub fn has_jira_token(&self) -> bool {
+        self.jira_token.read().map(|g| g.is_some()).unwrap_or(false)
+    }
+    /// Update the cache after a Keychain write/clear.
+    pub fn set_jira_token(&self, token: Option<String>) {
+        if let Ok(mut g) = self.jira_token.write() {
+            *g = token;
+        }
+    }
 }
 
 /// Toggle popover visibility, positioning it near the tray icon.
+///
+/// Positioning is done entirely in **physical** pixels, clamped to the monitor
+/// the tray icon is on. This matters on multi-monitor + Retina setups: mixing
+/// the window's physical `outer_size` with logical math (or assuming one scale
+/// factor) placed the popover off every display — visible=true but nowhere seen.
 fn toggle_window(app: &tauri::AppHandle, tray_rect: Option<tauri::Rect>) {
     let Some(window) = app.get_webview_window("main") else { return };
     if window.is_visible().unwrap_or(false) {
         let _ = window.hide();
         return;
     }
-    // Position under the tray icon when we know where it is; otherwise top-right.
+
     if let Some(rect) = tray_rect {
         if let (tauri::Position::Physical(pos), tauri::Size::Physical(size)) =
             (rect.position, rect.size)
         {
-            let win_size = window.outer_size().ok();
-            let win_w = win_size.map(|s| s.width as i32).unwrap_or(400);
-            let x = pos.x + (size.width as i32 / 2) - (win_w / 2);
-            let y = pos.y + size.height as i32 + 4;
-            let _ = window.set_position(tauri::PhysicalPosition::new(x.max(0), y));
+            // Window size in physical px (already scaled for its monitor).
+            let win = window.outer_size().ok();
+            let win_w = win.map(|s| s.width as i32).unwrap_or(400);
+
+            // Center under the tray icon, place just below the menu bar.
+            let mut x = pos.x + (size.width as i32 / 2) - (win_w / 2);
+            let mut y = pos.y + size.height as i32 + 4;
+
+            // Clamp to the monitor under the tray icon so we never land in a
+            // multi-display dead zone. Fall back to primary if lookup fails.
+            let monitor = window
+                .monitor_from_point(pos.x as f64, pos.y as f64)
+                .ok()
+                .flatten()
+                .or_else(|| window.primary_monitor().ok().flatten());
+            if let Some(m) = monitor {
+                let mp = m.position();
+                let ms = m.size();
+                let win_w = win.map(|s| s.width as i32).unwrap_or(400);
+                let win_h = win.map(|s| s.height as i32).unwrap_or(560);
+                let min_x = mp.x;
+                let max_x = mp.x + ms.width as i32 - win_w;
+                let min_y = mp.y;
+                let max_y = mp.y + ms.height as i32 - win_h;
+                x = x.clamp(min_x.min(max_x), max_x.max(min_x));
+                y = y.clamp(min_y.min(max_y), max_y.max(min_y));
+            }
+
+            let _ = window.set_position(tauri::PhysicalPosition::new(x, y));
+        }
+    } else {
+        // No tray rect (menu item / shortcut): center on the primary monitor.
+        if let Ok(Some(m)) = window.primary_monitor() {
+            let mp = m.position();
+            let ms = m.size();
+            let win = window.outer_size().ok();
+            let win_w = win.map(|s| s.width as i32).unwrap_or(400);
+            let win_h = win.map(|s| s.height as i32).unwrap_or(560);
+            let x = mp.x + (ms.width as i32 - win_w) / 2;
+            let y = mp.y + (ms.height as i32 - win_h) / 2;
+            let _ = window.set_position(tauri::PhysicalPosition::new(x, y));
         }
     }
+
+    // Re-assert float-above behavior on each show. As an LSUIElement/Accessory
+    // app, the popover otherwise slips behind other apps' windows (you'd have to
+    // minimize them to find it). always_on_top + visible-on-all-workspaces makes
+    // it behave like a real menu bar popover.
+    let _ = window.set_always_on_top(true);
+    #[cfg(target_os = "macos")]
+    let _ = window.set_visible_on_all_workspaces(true);
     let _ = window.show();
     let _ = window.set_focus();
 }
@@ -132,11 +208,12 @@ pub fn run() {
                         let app = app.clone();
                         tauri::async_runtime::spawn(async move {
                             let db = app.state::<Db>();
+                            let token = app.state::<AppState>().jira_token();
                             let settings = {
                                 let conn = db.0.lock().unwrap();
                                 settings_repo::load(&conn)
                             };
-                            let _ = sync::run_sync(&db, &settings).await;
+                            let _ = sync::run_sync(&db, &settings, token).await;
                         });
                     }
                     "quit" => app.exit(0),
@@ -187,11 +264,12 @@ pub fn run() {
                 let mut consecutive_failures: u32 = 0;
                 loop {
                     let db = poll_handle.state::<Db>();
+                    let token = poll_handle.state::<AppState>().jira_token();
                     let settings = {
                         let conn = db.0.lock().unwrap();
                         settings_repo::load(&conn)
                     };
-                    match sync::run_sync(&db, &settings).await {
+                    match sync::run_sync(&db, &settings, token).await {
                         Ok(_) => consecutive_failures = 0,
                         Err(_) => consecutive_failures = consecutive_failures.saturating_add(1),
                     }

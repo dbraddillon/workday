@@ -50,10 +50,17 @@ export interface StandupSection {
   items: StandupItem[];
 }
 
+export interface StandupNarrative {
+  doing: string;
+  pairing: string;
+  post_scrum: string;
+}
+
 export interface StandupModel {
   time_range: TimeRange;
   sections: StandupSection[];
   blockers: string[];
+  narrative: StandupNarrative;
 }
 
 export interface StandupDraft {
@@ -73,7 +80,11 @@ export interface AppSettings {
   ai_polish_enabled: boolean;
   fake_data_mode: boolean;
   has_jira_token: boolean;
+  thread_doing: string;
+  thread_pairing: string;
+  thread_post_scrum: string;
 }
 
-export type RecentRange = "today" | "24h" | "3d" | "7d";
+// "standup" is the day-aware window: Mon/Sun reach back to Friday, else yesterday.
+export type RecentRange = "standup" | "today" | "24h" | "3d" | "7d";
 export type Tab = "in_progress" | "recent" | "standup";

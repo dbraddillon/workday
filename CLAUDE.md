@@ -80,15 +80,38 @@ never needs the CLI.
 
 ## Known v1 limitations (intentional; fix when they bite)
 
-- **Jira Search API:** uses the classic `/rest/api/3/search` with `startAt`/`total`
-  pagination, which Atlassian is deprecating in favor of the cursor-based
-  `/search/jql`. If pagination silently stops at 50 issues on a newer instance,
-  that's the cause — migrate `connector/jira.rs::search` to the cursor API.
+- **Jira Search API:** migrated to the cursor-based `/rest/api/3/search/jql`
+  (`nextPageToken`/`isLast`); the classic `/rest/api/3/search` was removed by
+  Atlassian (410 Gone, CHANGE-2046). Note `/search/jql` returns only issue `id`
+  unless `fields` is passed — keep `FIELDS` populated in `connector/jira.rs`.
 - **AI polish is silent-fallback:** if the `claude` CLI errors or times out
   (`DEFAULT_TIMEOUT`), `generate_standup` falls back to the deterministic draft
   without telling the UI. Acceptable for v1; surface the fallback if it confuses.
 - **Poll loop** applies linear backoff on repeated sync failures but has no
   network-reachability check; it just keeps retrying at a longer interval.
+
+## Debugging gotchas (learned the hard way)
+
+- **`tauri dev` does not reliably deliver tray-icon clicks or global shortcuts**
+  on this machine — the popover appears dead (icon shows, clicks/⌘⇧J do nothing,
+  no error). The event loop / status-item wiring only behaves in a real signed
+  `.app` bundle. **To test tray/window behavior, `npm run install-app` and test
+  the installed app — not `npm run app`.** Dev mode is fine for UI/logic work.
+- **Popover window must be `transparent: false`.** With `transparent: true` +
+  `decorations: false` (the original config) the window renders fully invisible
+  on some macOS setups (`is_visible()==true`, nothing painted). The body CSS also
+  used `background: transparent` + `backdrop-filter` for a frosted look that only
+  worked over a transparent window — now `body` uses `--bg-solid`. Keep the
+  window opaque; borderless is fine.
+- **Keychain re-prompts every dev rebuild.** `AppState::new()` reads the token
+  from the Keychain once at startup; each `cargo` rebuild re-signs the dev binary,
+  so macOS treats it as a new app and re-prompts even after "Always Allow". The
+  installed (ad-hoc signed) bundle has a stable signature, so "Always Allow"
+  sticks there. If debugging something unrelated to Jira in dev, temporarily stub
+  the token read to `None` to stop the spam.
+- Tray/window positioning is done in **physical** px, clamped to the monitor
+  under the tray icon (`toggle_window`) — mixing physical `outer_size` with
+  logical math threw the popover off-screen on multi-monitor + Retina.
 
 ## Not in v1 (preserve seams, don't build)
 

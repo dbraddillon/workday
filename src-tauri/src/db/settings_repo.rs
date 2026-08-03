@@ -1,7 +1,7 @@
 //! Settings persistence. Non-secret `AppSettings` stored as key/value rows so
 //! adding a field never needs a schema migration.
 
-use crate::config::{self, AppSettings};
+use crate::config::AppSettings;
 use rusqlite::{params, Connection};
 
 pub fn load(conn: &Connection) -> AppSettings {
@@ -24,16 +24,21 @@ pub fn load(conn: &Connection) -> AppSettings {
                 "default_formatter" => s.default_formatter = v,
                 "ai_polish_enabled" => s.ai_polish_enabled = v == "true",
                 "fake_data_mode" => s.fake_data_mode = v == "true",
+                "thread_doing" => s.thread_doing = v,
+                "thread_pairing" => s.thread_pairing = v,
+                "thread_post_scrum" => s.thread_post_scrum = v,
                 _ => {}
             }
         }
     }
-    s.has_jira_token = config::get_jira_token().is_some();
+    // `has_jira_token` is filled by the caller from the cached AppState token —
+    // load() must not touch the Keychain (it runs on every settings load and
+    // every sync pass, which would re-prompt).
     s
 }
 
 pub fn save(conn: &Connection, s: &AppSettings) -> rusqlite::Result<()> {
-    let pairs: [(&str, String); 9] = [
+    let pairs: [(&str, String); 12] = [
         ("jira_base_url", s.jira_base_url.clone()),
         ("jira_email", s.jira_email.clone()),
         ("jira_jql_in_progress", s.jira_jql_in_progress.clone()),
@@ -43,6 +48,9 @@ pub fn save(conn: &Connection, s: &AppSettings) -> rusqlite::Result<()> {
         ("default_formatter", s.default_formatter.clone()),
         ("ai_polish_enabled", s.ai_polish_enabled.to_string()),
         ("fake_data_mode", s.fake_data_mode.to_string()),
+        ("thread_doing", s.thread_doing.clone()),
+        ("thread_pairing", s.thread_pairing.clone()),
+        ("thread_post_scrum", s.thread_post_scrum.clone()),
     ];
     for (k, v) in pairs {
         conn.execute(

@@ -55,6 +55,16 @@ pub fn upsert_issues(conn: &Connection, issues: &[Issue], now: &str) -> rusqlite
     Ok(())
 }
 
+/// Wipe all cached issues and derived activity. Used when switching data
+/// sources (e.g. fake-data mode OFF) so stale rows from the old source — which
+/// live under the same `source='jira'` key and would otherwise never age out —
+/// don't mix with the new source's data.
+pub fn clear_issue_cache(conn: &Connection) -> rusqlite::Result<()> {
+    conn.execute("DELETE FROM issue_activity", [])?;
+    conn.execute("DELETE FROM issues", [])?;
+    Ok(())
+}
+
 fn row_to_issue(row: &rusqlite::Row) -> rusqlite::Result<Issue> {
     let labels_json: String = row.get("labels_json")?;
     let labels: Vec<String> = serde_json::from_str(&labels_json).unwrap_or_default();
