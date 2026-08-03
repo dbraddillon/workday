@@ -1,0 +1,33 @@
+# Dependencies
+node_modules/
+dist/
+dist-ssr/
+
+# Tauri / Rust
+src-tauri/target/
+src-tauri/gen/
+
+# Local runtime data (SQLite cache, generated context files)
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+standup-context.json
+standup-context.*.json
+
+# Env / secrets — secrets live in Keychain, never in the repo
+.env
+.env.local
+*.local
+
+# macOS
+.DS_Store
+
+# IDE
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Logs
+*.log
+npm-debug.log*
