@@ -13,6 +13,32 @@ npm run app          # dev
 npm run app:build    # release .app bundle → src-tauri/target/release/bundle/macos/
 ```
 
+## Install as a real Mac app
+
+To run Workday like any other app (Spotlight, Launchpad, click-to-run) instead
+of `npm run`:
+
+```bash
+npm run app:build
+# Ad-hoc sign so Gatekeeper is calmer (no Apple account needed):
+codesign --force --deep --sign - "src-tauri/target/release/bundle/macos/Workday.app"
+# Install:
+cp -R "src-tauri/target/release/bundle/macos/Workday.app" /Applications/
+open /Applications/Workday.app
+```
+
+It lives in the **menu bar** (no Dock icon), so after launch look for its icon
+in the top-right, or press **⌘⇧J**. It stays running until you Quit from the
+tray menu.
+
+**Launch at login:** open the app → **Settings** (⚙) → toggle *Launch at login*.
+
+**First launch (unsigned/ad-hoc):** if macOS blocks it, right-click
+`Workday.app` → **Open** → **Open** once; thereafter it launches normally.
+
+To update after code changes: rebuild, re-sign, and copy over the old copy in
+`/Applications`.
+
 ## Fake-data mode
 
 On first launch the app is in **fake-data mode**: it serves sample issues and

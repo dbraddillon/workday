@@ -40,6 +40,10 @@ export const api = {
   recordDelivery: (method: string) =>
     invoke("record_delivery", { method }),
 
+  getAutostart: () => invoke<boolean>("get_autostart"),
+  setAutostart: (enabled: boolean) =>
+    invoke<boolean>("set_autostart", { enabled }),
+
   hideWindow: () => invoke("hide_window"),
   uiReady: () => invoke("ui_ready"),
 };

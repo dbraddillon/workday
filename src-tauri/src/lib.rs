@@ -66,6 +66,16 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init());
 
+    // Launch-at-login. Uses the OS-native mechanism (macOS Login Items). The
+    // toggle in Settings enables/disables it at runtime.
+    #[cfg(desktop)]
+    {
+        builder = builder.plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            None,
+        ));
+    }
+
     // Register the global-shortcut plugin exactly once, with its handler. The
     // ⌘⇧J toggle is matched inside the handler; we call `.register()` in setup.
     #[cfg(desktop)]
@@ -197,6 +207,8 @@ pub fn run() {
             commands::build_standup_model,
             commands::generate_standup,
             commands::record_delivery,
+            commands::get_autostart,
+            commands::set_autostart,
             commands::hide_window,
             commands::ui_ready,
         ])

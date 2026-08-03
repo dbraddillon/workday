@@ -13,8 +13,23 @@ export function SettingsPanel({
   const [token, setToken] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [autostart, setAutostartState] = useState(false);
 
   useEffect(() => setForm(settings), [settings]);
+
+  // Launch-at-login is an OS-level setting, read/written directly (not part of
+  // the saved AppSettings blob).
+  useEffect(() => {
+    api.getAutostart().then(setAutostartState).catch(() => {});
+  }, []);
+
+  const toggleAutostart = async (enabled: boolean) => {
+    try {
+      setAutostartState(await api.setAutostart(enabled));
+    } catch (e) {
+      setError(String(e));
+    }
+  };
 
   if (!form) return <div className="loading">Loading settings…</div>;
 
@@ -137,6 +152,16 @@ export function SettingsPanel({
             type="checkbox"
             checked={form.ai_polish_enabled}
             onChange={(e) => set("ai_polish_enabled", e.target.checked)}
+          />
+        </div>
+        <div className="settings-row toggle-row">
+          <label title="Start Workday automatically when you log in">
+            Launch at login
+          </label>
+          <input
+            type="checkbox"
+            checked={autostart}
+            onChange={(e) => toggleAutostart(e.target.checked)}
           />
         </div>
       </section>

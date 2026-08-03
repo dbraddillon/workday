@@ -163,6 +163,28 @@ pub fn record_delivery(method: String) -> Result<DeliveryResult, String> {
     Ok(V1DeliveryService.deliver("", method))
 }
 
+// ------------------------------ autostart ----------------------------------
+
+/// Whether the app is set to launch at login.
+#[tauri::command]
+pub fn get_autostart(app: tauri::AppHandle) -> Result<bool, String> {
+    use tauri_plugin_autostart::ManagerExt;
+    app.autolaunch().is_enabled().map_err(|e| e.to_string())
+}
+
+/// Enable/disable launch at login.
+#[tauri::command]
+pub fn set_autostart(app: tauri::AppHandle, enabled: bool) -> Result<bool, String> {
+    use tauri_plugin_autostart::ManagerExt;
+    let mgr = app.autolaunch();
+    if enabled {
+        mgr.enable().map_err(|e| e.to_string())?;
+    } else {
+        mgr.disable().map_err(|e| e.to_string())?;
+    }
+    mgr.is_enabled().map_err(|e| e.to_string())
+}
+
 // -------------------------------- window ------------------------------------
 
 /// Hide the popover (used by the "close" affordance / Escape).
