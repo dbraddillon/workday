@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "app": "tauri dev",
-    "app:build": "tauri build"
+    "app:build": "tauri build",
+    "install-app": "bash scripts/install-app.sh"
   },
   "dependencies": {
     "react": "^19.1.0",

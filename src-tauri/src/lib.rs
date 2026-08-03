@@ -113,8 +113,16 @@ pub fn run() {
             let quit_item = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&show_item, &refresh_item, &quit_item])?;
 
+            // Dedicated monochrome template icon (black-on-transparent). macOS
+            // recolors template icons to match the menu bar in light/dark. The
+            // @2x asset is embedded; macOS scales it for the ~22pt bar.
+            let tray_icon = tauri::image::Image::from_bytes(include_bytes!(
+                "../icons/tray-icon@2x.png"
+            ))
+            .expect("tray icon");
+
             let _tray = TrayIconBuilder::with_id("main-tray")
-                .icon(app.default_window_icon().unwrap().clone())
+                .icon(tray_icon)
                 .icon_as_template(true) // render monochrome to match the menu bar
                 .menu(&menu)
                 .show_menu_on_left_click(false)
