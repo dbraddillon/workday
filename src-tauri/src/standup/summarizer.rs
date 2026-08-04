@@ -1,11 +1,12 @@
 //! Optional AI polish for standup drafts — the `Summarizer` seam.
 //!
-//! Design decision (see docs/ARCHITECTURE.md): v1 reuses the locally
-//! authenticated `claude` CLI rather than a hosted API. On this machine the CLI
-//! is Bedrock-backed (`CLAUDE_CODE_USE_BEDROCK=1`, `AWS_PROFILE=ClaudeCode` in
-//! ~/.claude/settings.json), so spawning `claude -p` runs against Bedrock with
-//! the user's own AWS creds — no API keys, no separate billing. This mirrors the
-//! approach in the local `ClaudeChat` repo.
+//! Design decision (see docs/ARCHITECTURE.md): if a user opts in, polish reuses
+//! a locally installed `claude` CLI rather than a hosted API baked into the app.
+//! We just spawn `claude -p …`; it inherits whatever auth the CLI is configured
+//! with (an Anthropic API key, a Bedrock/AWS profile, etc.) — the app manages no
+//! credentials and requires no specific backend. This is entirely optional: with
+//! no `claude` on PATH, the deterministic formatter is used and the UI hides the
+//! toggle (see `claude_cli_available`). No external repo or service is required.
 //!
 //! Three things live here, matching what was asked for:
 //!   1. `Summarizer` trait — the swap point (deterministic → CLI → hosted API).

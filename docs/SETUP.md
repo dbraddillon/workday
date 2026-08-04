@@ -38,6 +38,19 @@ npm run app:build    # release .app bundle → src-tauri/target/release/bundle/m
 `npm run install-app` is `app:build` plus the sign/install/launch steps in
 `scripts/install-app.sh`.
 
+### Verify the toolchain (optional smoke check)
+
+If a build fails and you want to isolate frontend vs. backend, these two checks
+compile each side without producing a bundle:
+
+```bash
+npx tsc --noEmit              # frontend type-check
+(cd src-tauri && cargo check) # backend compile
+```
+
+Otherwise, the app launching into fake-data mode (below) is itself the proof
+that install worked end to end.
+
 **First launch (unsigned/ad-hoc):** `npm run install-app` strips quarantine so
 Gatekeeper usually stays quiet. If macOS still blocks it, right-click
 `Workday.app` in `/Applications` → **Open** → **Open** once; thereafter it
@@ -85,20 +98,26 @@ behind the same connector auth code without changing callers.
 
 ## The standup thread format
 
-If you set **Settings → Standup format** to *Standup thread reply (5 prompts)*,
-the generator renders five emoji-prefixed lines:
+If you set **Settings → Standup format** to *Standup thread reply (5 prompts)*
+(the default), the generator renders five emoji-prefixed lines:
 
 - `:city_sunrise:` — how you're doing (freeform)
 - `:computer:` — what you're working on (derived from Jira: in-progress items
-  first, then recently-done items marked `:white_check_mark:`, one flush-left
-  bullet each)
+  first, then recently-done items, one flush-left bullet each). Each item may
+  carry a state emoji from its Jira status — `:pull_request:` (review/PR/QA),
+  `:merged:`, `:deployparrot:` (deployed/released), or `:white_check_mark:` (done).
 - `:two-peas-in-a-pod:` — pairing opportunities (freeform)
-- `:blocker:` — blockers (derived from Jira; falls back to `Nope`)
+- `:blocker:` — blockers (derived from Jira; falls back to your default)
 - `:high-five:` — anything for post scrum (freeform)
 
-The three freeform lines have editable defaults under **Settings → Standup
-thread defaults** (they only appear when the thread format is selected). You can
-still edit any line per post before copying.
+The **entire template is editable** under **Settings → Standup thread template**
+(shown only when the thread format is selected): the left-side **prompt emoji**
+for all five lines, plus the **default answers** for the four freeform lines
+(doing / pairing / blockers / post-scrum). The four freeform answers can also be
+edited per post on the Standup tab before copying.
+
+The emoji are Slack *shortcodes*; if your workspace lacks a given custom emoji,
+Slack shows the literal `:shortcode:` text — swap it in Settings for one you have.
 
 The **"Since standup"** window in the Standup tab is day-aware: on Monday it
 reaches back to the previous Friday; on other days it reaches back to yesterday.

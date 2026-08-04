@@ -4,6 +4,12 @@ A compact macOS **menu bar app** that gives you a quick glance at your Jira work
 and generates a Slack standup draft from a time window. Local-first,
 single-user, no backend — everything runs on your machine.
 
+> **In short:** it's **macOS-only**, and all you need to connect is your **Jira
+> account email + a Jira API token** you create yourself. No server, no admin
+> access, no shared account. It runs entirely on your Mac and stores your token
+> in the macOS Keychain. (An "AI polish" step is available but fully optional —
+> the app works without it.)
+
 <!-- screenshot placeholder -->
 
 ## What it does
@@ -109,24 +115,33 @@ The **thread** format renders the five prompts in order:
 - `:high-five:` — anything for post scrum (freeform; editable default)
 
 The `:computer:` line lists everything touched in the window — in-progress items
-first, then recently-done items marked `:white_check_mark:` — one flush-left
-bullet each (Slack strips leading whitespace, so bullets keep items distinct).
-Example generated draft:
+first, then recently-done ones — one flush-left bullet each (Slack strips leading
+whitespace, so bullets keep items distinct). Each item can also get a **state
+emoji** from its Jira status: `:pull_request:` (in review / PR / QA),
+`:merged:`, `:deployparrot:` (deployed / released), or `:white_check_mark:`
+(done). Example generated draft:
 
 ```
 :city_sunrise: :batman: :thumbsup_all:
 :computer:
 • ABC-101 — Wire up the export pipeline
 • ABC-98 — Fix flaky pagination test :white_check_mark:
+• ABC-72 — Ship the settings migration :deployparrot:
 :two-peas-in-a-pod: :available:
 :blocker: Nope
 :high-five: Nope
 ```
 
-The three freeform lines (`:city_sunrise:`, `:two-peas-in-a-pod:`,
-`:high-five:`) have editable defaults you set once in **Settings → Standup thread
-defaults**, and you can still edit them per post before copying. Paste the output
-into your Slack thread.
+The **whole template is editable** in **Settings → Standup thread template** —
+both the left-side prompt emoji (to match your team's exact thread) and the
+default answers for the four freeform lines (doing / pairing / blockers /
+post-scrum). You can also tweak those four per post on the Standup tab before
+copying. Paste the output into your Slack thread.
+
+> **About the emoji:** these are Slack emoji *shortcodes* (`:merged:`,
+> `:deployparrot:`, etc.). If your Slack workspace doesn't have a given custom
+> emoji, Slack simply shows the literal `:shortcode:` text — harmless, and you
+> can swap any of them in Settings for emoji your workspace does have.
 
 ## Optional: AI polish
 
@@ -181,3 +196,7 @@ reformat or summarize, feeding in example posts. See
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — layers, seams, and how to extend.
 - [CLAUDE.md](CLAUDE.md) — working notes for Claude Code sessions.
 - [docs/mac-menubar-jira-slack-handoff.md](docs/mac-menubar-jira-slack-handoff.md) — the original product brief.
+
+## License
+
+[MIT](LICENSE) — do what you like with it.
