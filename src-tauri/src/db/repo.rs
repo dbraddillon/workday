@@ -223,6 +223,68 @@ pub fn sync_status(conn: &Connection) -> rusqlite::Result<SyncStatus> {
     })
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::migrations;
+
+    fn migrated() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        migrations::run(&conn).unwrap();
+        conn
+    }
+
+    fn fake_issue(key: &str) -> Issue {
+        Issue {
+            source: "jira".into(),
+            source_issue_id: key.into(),
+            issue_key: key.into(),
+            summary: "Sample".into(),
+            status_name: "In Progress".into(),
+            status_category: "indeterminate".into(),
+            assignee_display: None,
+            reporter_display: None,
+            project_key: None,
+            project_name: None,
+            updated_at: "2026-01-01T00:00:00+00:00".into(),
+            created_at: "2026-01-01T00:00:00+00:00".into(),
+            browse_url: String::new(),
+            labels: vec![],
+        }
+    }
+
+    // Mirrors the fake→real transition: sample rows in the cache get wiped so
+    // they can't bleed into real Jira data (both live under source='jira').
+    #[test]
+    fn clear_issue_cache_empties_issues_and_activity() {
+        let conn = migrated();
+        let now = "2026-01-01T00:00:00+00:00";
+        upsert_issues(&conn, &[fake_issue("APP-1"), fake_issue("PLAT-2")], now).unwrap();
+        upsert_activity(
+            &conn,
+            &[ActivityEvent {
+                issue_key: "APP-1".into(),
+                activity_type: "status_change".into(),
+                activity_at: now.into(),
+                actor_display: None,
+                old_value: None,
+                new_value: Some("Done".into()),
+                text_summary: Some("→ Done".into()),
+            }],
+        )
+        .unwrap();
+        assert_eq!(in_progress(&conn).unwrap().len(), 2);
+
+        clear_issue_cache(&conn).unwrap();
+
+        assert_eq!(in_progress(&conn).unwrap().len(), 0);
+        let activity_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM issue_activity", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(activity_count, 0);
+    }
+}
+
 // --------------------------- generated posts -------------------------------
 
 pub fn save_generated_post(
