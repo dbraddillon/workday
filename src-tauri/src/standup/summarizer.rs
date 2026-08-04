@@ -35,9 +35,27 @@ impl Summarizer for PassthroughSummarizer {
     }
 }
 
+/// Best-effort check for whether AI polish can work: is a `claude` CLI on PATH
+/// and does it respond to `--version`? Used to gate the UI toggle so teammates
+/// without the CLI aren't offered an option that silently no-ops. This does NOT
+/// verify the CLI is authenticated (Bedrock/API key) — that only surfaces at
+/// actual polish time, where we fall back to the deterministic draft anyway.
+pub async fn claude_cli_available() -> bool {
+    tokio::process::Command::new("claude")
+        .arg("--version")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .await
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
+
 /// Polishes the draft by piping it through the local `claude` CLI in headless
-/// mode. Inherits the ambient Bedrock/AWS env, so it "just works" wherever the
-/// CLI is logged in.
+/// mode. Inherits the ambient CLI auth (Bedrock, an Anthropic API key, or
+/// whatever the CLI is logged in with), so it "just works" wherever the CLI is
+/// configured — and is skipped entirely when it isn't.
 pub struct ClaudeCliSummarizer;
 
 impl Summarizer for ClaudeCliSummarizer {

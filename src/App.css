@@ -331,6 +331,33 @@ body {
   color: var(--text-dim);
   cursor: pointer;
 }
+.standup-note {
+  font-size: 11px;
+  color: var(--text-dim);
+  padding: 6px 4px 0;
+  line-height: 1.35;
+}
+.thread-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 6px;
+}
+.thread-row > input:not(.thread-emoji) {
+  flex: 1;
+  min-width: 0;
+}
+.thread-emoji {
+  flex: 0 0 140px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+}
+.thread-auto {
+  flex: 1;
+  font-size: 12px;
+  color: var(--text-dim);
+  font-style: italic;
+}
 .draft {
   margin-top: 8px;
 }

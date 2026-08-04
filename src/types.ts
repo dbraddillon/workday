@@ -54,6 +54,13 @@ export interface StandupNarrative {
   doing: string;
   pairing: string;
   post_scrum: string;
+  // Populated by the backend from settings; the UI edits only the three above.
+  blocker?: string;
+  prompt_doing?: string;
+  prompt_working?: string;
+  prompt_pairing?: string;
+  prompt_blocker?: string;
+  prompt_post_scrum?: string;
 }
 
 export interface StandupModel {
@@ -67,6 +74,9 @@ export interface StandupDraft {
   formatter_key: string;
   time_range: TimeRange;
   text: string;
+  // Set to an error string when AI polish was requested but fell back to the
+  // deterministic draft; null/absent otherwise.
+  ai_polish_fell_back?: string | null;
 }
 
 export interface AppSettings {
@@ -80,8 +90,15 @@ export interface AppSettings {
   ai_polish_enabled: boolean;
   fake_data_mode: boolean;
   has_jira_token: boolean;
+  // Thread template — prompt emoji (left) + answer defaults (right).
+  thread_prompt_doing: string;
+  thread_prompt_working: string;
+  thread_prompt_pairing: string;
+  thread_prompt_blocker: string;
+  thread_prompt_post_scrum: string;
   thread_doing: string;
   thread_pairing: string;
+  thread_blocker: string;
   thread_post_scrum: string;
 }
 

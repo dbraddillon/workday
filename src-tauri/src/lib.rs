@@ -74,6 +74,9 @@ fn toggle_window(app: &tauri::AppHandle, tray_rect: Option<tauri::Rect>) {
     let Some(window) = app.get_webview_window("main") else { return };
     if window.is_visible().unwrap_or(false) {
         let _ = window.hide();
+        // Drop back to accessory (no Dock icon) once the popover is dismissed.
+        #[cfg(target_os = "macos")]
+        let _ = app.set_activation_policy(tauri::ActivationPolicy::Accessory);
         return;
     }
 
@@ -126,9 +129,13 @@ fn toggle_window(app: &tauri::AppHandle, tray_rect: Option<tauri::Rect>) {
     }
 
     // Re-assert float-above behavior on each show. As an LSUIElement/Accessory
-    // app, the popover otherwise slips behind other apps' windows (you'd have to
-    // minimize them to find it). always_on_top + visible-on-all-workspaces makes
-    // it behave like a real menu bar popover.
+    // app, the popover otherwise slips behind other apps' windows — worse, it
+    // won't come forward over a *fullscreen/maximized* app at all, because an
+    // accessory app never truly activates. Briefly promoting to Regular lets the
+    // app activate so the window rises above fullscreen; we revert to Accessory
+    // on hide. Cost: a Dock icon appears while the popover is open.
+    #[cfg(target_os = "macos")]
+    let _ = app.set_activation_policy(tauri::ActivationPolicy::Regular);
     let _ = window.set_always_on_top(true);
     #[cfg(target_os = "macos")]
     let _ = window.set_visible_on_all_workspaces(true);
@@ -246,9 +253,14 @@ pub fn run() {
             // ---- Hide the window when it loses focus (popover behavior). ----
             if let Some(win) = app.get_webview_window("main") {
                 let w = win.clone();
+                let app_handle = app.handle().clone();
                 win.on_window_event(move |event| {
                     if let WindowEvent::Focused(false) = event {
                         let _ = w.hide();
+                        // Revert to accessory so the Dock icon (added on show for
+                        // fullscreen float) doesn't linger after clicking away.
+                        #[cfg(target_os = "macos")]
+                        let _ = app_handle.set_activation_policy(tauri::ActivationPolicy::Accessory);
                     }
                 });
             }
@@ -292,6 +304,7 @@ pub fn run() {
             commands::refresh_now,
             commands::build_standup_model,
             commands::generate_standup,
+            commands::ai_polish_available,
             commands::record_delivery,
             commands::get_autostart,
             commands::set_autostart,

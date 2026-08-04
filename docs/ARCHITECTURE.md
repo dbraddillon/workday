@@ -36,7 +36,8 @@ in_range       notes, carryover)
 - **Retrieval never knows the output format.** Swapping/adding a formatter or
   summarizer touches nothing upstream.
 - **Formatters** implement `StandupFormatter`; register a key in `render_with`.
-  v1 ships `default` (grouped-by-status, Slack markdown) and `plain`.
+  v1 ships `default` (grouped-by-status, Slack markdown), `thread` (a team
+  standup thread's five emoji-prefixed prompts), and `plain`.
 - The composer emits a normalized model so a future formatter can *mirror a
   supplied example post's style* without changing retrieval — the core
   requirement from the brief.
@@ -45,15 +46,18 @@ in_range       notes, carryover)
 
 The `Summarizer` trait has three concrete pieces:
 
-1. `PassthroughSummarizer` — returns the deterministic draft unchanged (default).
-2. `ClaudeCliSummarizer` — spawns the local `claude -p` CLI, which is
-   Bedrock-backed on this machine, so it uses the user's AWS creds (no API key).
+1. `PassthroughSummarizer` — returns the deterministic draft unchanged (default;
+   AI polish is opt-in and never required).
+2. `ClaudeCliSummarizer` — spawns a local `claude -p` CLI if one is on `PATH`.
+   How that CLI authenticates is the user's own setup (Anthropic API key,
+   Bedrock, or anything else the CLI supports); the app manages no credentials.
+   Any error falls back to the passthrough draft.
 3. `write_context_file()` — dumps the model + draft + style sample to
    `standup-context.json` so any external Claude instance can reformat it on
-   demand.
+   demand, with no CLI configured inside the app.
 
-This is the answer to "how do we do AI summaries without a backend or API keys":
-reuse the already-authenticated local CLI, and always leave a file on disk as a
+This is the answer to "how do we do AI summaries without a backend": reuse
+whatever local CLI the user already has, and always leave a file on disk as a
 fallback. Later this can become a hosted-API summarizer by adding a fourth impl —
 callers don't change.
 

@@ -24,6 +24,12 @@ cp -R "$APP" "$DEST"
 # Strip quarantine so the local build opens without a Gatekeeper prompt.
 xattr -dr com.apple.quarantine "$DEST" 2>/dev/null || true
 
+# Clear the WKWebView cache. Without this, an updated build can keep painting
+# the OLD frontend (stale cached JS) even though the binary is new — the UI
+# looks unchanged after an update. Safe to delete; the webview repopulates it.
+BUNDLE_ID="com.dbraddillon.workday"
+rm -rf "$HOME/Library/Caches/$BUNDLE_ID" "$HOME/Library/WebKit/$BUNDLE_ID" 2>/dev/null || true
+
 echo "▸ Launching…"
 open "$DEST"
 

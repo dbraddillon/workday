@@ -156,7 +156,7 @@ export function SettingsPanel({
           </select>
         </label>
         <div className="settings-row toggle-row">
-          <label title="Refine standup drafts with your local Claude CLI (Bedrock)">
+          <label title="Optionally refine standup drafts with your local `claude` CLI, if one is installed. Works without it.">
             AI polish standups by default
           </label>
           <input
@@ -179,35 +179,88 @@ export function SettingsPanel({
 
       {form.default_formatter === "thread" && (
         <section className="settings-section">
-          <h3>Standup thread defaults</h3>
+          <h3>Standup thread template</h3>
           <p className="settings-hint">
-            Prefilled answers for the thread prompts. "Working on" and "Blockers"
-            come from Jira; these three you set here (editable per post).
+            Match your team's standup thread. The left field is the prompt emoji
+            (the subject Slack shows); the right is your default answer. "Working
+            on" is always built from Jira; "Blockers" comes from Jira too, falling
+            back to your default when there are none. Answers are editable per post.
           </p>
-          <label className="settings-field">
-            🌅 How are you doing?
+
+          <div className="thread-row">
+            <input
+              className="thread-emoji"
+              type="text"
+              aria-label="Doing prompt emoji"
+              value={form.thread_prompt_doing}
+              onChange={(e) => set("thread_prompt_doing", e.target.value)}
+            />
             <input
               type="text"
+              placeholder="How are you doing?"
               value={form.thread_doing}
               onChange={(e) => set("thread_doing", e.target.value)}
             />
-          </label>
-          <label className="settings-field">
-            🫛 Any pairing opportunities?
+          </div>
+
+          <div className="thread-row">
+            <input
+              className="thread-emoji"
+              type="text"
+              aria-label="Working-on prompt emoji"
+              value={form.thread_prompt_working}
+              onChange={(e) => set("thread_prompt_working", e.target.value)}
+            />
+            <span className="thread-auto">— from Jira (in-progress + done)</span>
+          </div>
+
+          <div className="thread-row">
+            <input
+              className="thread-emoji"
+              type="text"
+              aria-label="Pairing prompt emoji"
+              value={form.thread_prompt_pairing}
+              onChange={(e) => set("thread_prompt_pairing", e.target.value)}
+            />
             <input
               type="text"
+              placeholder="Any pairing opportunities?"
               value={form.thread_pairing}
               onChange={(e) => set("thread_pairing", e.target.value)}
             />
-          </label>
-          <label className="settings-field">
-            🙌 Anything for post scrum?
+          </div>
+
+          <div className="thread-row">
+            <input
+              className="thread-emoji"
+              type="text"
+              aria-label="Blocker prompt emoji"
+              value={form.thread_prompt_blocker}
+              onChange={(e) => set("thread_prompt_blocker", e.target.value)}
+            />
             <input
               type="text"
+              placeholder="No-blockers fallback (e.g. Nope)"
+              value={form.thread_blocker}
+              onChange={(e) => set("thread_blocker", e.target.value)}
+            />
+          </div>
+
+          <div className="thread-row">
+            <input
+              className="thread-emoji"
+              type="text"
+              aria-label="Post-scrum prompt emoji"
+              value={form.thread_prompt_post_scrum}
+              onChange={(e) => set("thread_prompt_post_scrum", e.target.value)}
+            />
+            <input
+              type="text"
+              placeholder="Anything for post scrum?"
               value={form.thread_post_scrum}
               onChange={(e) => set("thread_post_scrum", e.target.value)}
             />
-          </label>
+          </div>
         </section>
       )}
 

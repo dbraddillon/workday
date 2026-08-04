@@ -26,7 +26,13 @@ pub fn load(conn: &Connection) -> AppSettings {
                 "fake_data_mode" => s.fake_data_mode = v == "true",
                 "thread_doing" => s.thread_doing = v,
                 "thread_pairing" => s.thread_pairing = v,
+                "thread_blocker" => s.thread_blocker = v,
                 "thread_post_scrum" => s.thread_post_scrum = v,
+                "thread_prompt_doing" => s.thread_prompt_doing = v,
+                "thread_prompt_working" => s.thread_prompt_working = v,
+                "thread_prompt_pairing" => s.thread_prompt_pairing = v,
+                "thread_prompt_blocker" => s.thread_prompt_blocker = v,
+                "thread_prompt_post_scrum" => s.thread_prompt_post_scrum = v,
                 _ => {}
             }
         }
@@ -38,7 +44,7 @@ pub fn load(conn: &Connection) -> AppSettings {
 }
 
 pub fn save(conn: &Connection, s: &AppSettings) -> rusqlite::Result<()> {
-    let pairs: [(&str, String); 12] = [
+    let pairs: [(&str, String); 18] = [
         ("jira_base_url", s.jira_base_url.clone()),
         ("jira_email", s.jira_email.clone()),
         ("jira_jql_in_progress", s.jira_jql_in_progress.clone()),
@@ -50,7 +56,13 @@ pub fn save(conn: &Connection, s: &AppSettings) -> rusqlite::Result<()> {
         ("fake_data_mode", s.fake_data_mode.to_string()),
         ("thread_doing", s.thread_doing.clone()),
         ("thread_pairing", s.thread_pairing.clone()),
+        ("thread_blocker", s.thread_blocker.clone()),
         ("thread_post_scrum", s.thread_post_scrum.clone()),
+        ("thread_prompt_doing", s.thread_prompt_doing.clone()),
+        ("thread_prompt_working", s.thread_prompt_working.clone()),
+        ("thread_prompt_pairing", s.thread_prompt_pairing.clone()),
+        ("thread_prompt_blocker", s.thread_prompt_blocker.clone()),
+        ("thread_prompt_post_scrum", s.thread_prompt_post_scrum.clone()),
     ];
     for (k, v) in pairs {
         conn.execute(

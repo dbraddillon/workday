@@ -97,9 +97,26 @@ pub struct StandupSection {
 /// unaffected.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct StandupNarrative {
+    // Answers (right side) for the non-Jira lines.
     pub doing: String,
     pub pairing: String,
     pub post_scrum: String,
+    /// Fallback for the blocker line when Jira reports no blockers.
+    #[serde(default)]
+    pub blocker: String,
+    // Prompt emoji (left side / subject) for each of the five lines. Carried on
+    // the model so the thread formatter renders the exact team template without
+    // reaching into settings. Empty strings fall back to the formatter's builtin.
+    #[serde(default)]
+    pub prompt_doing: String,
+    #[serde(default)]
+    pub prompt_working: String,
+    #[serde(default)]
+    pub prompt_pairing: String,
+    #[serde(default)]
+    pub prompt_blocker: String,
+    #[serde(default)]
+    pub prompt_post_scrum: String,
 }
 
 /// The normalized, format-agnostic standup model. Formatters consume this.
@@ -121,4 +138,9 @@ pub struct StandupDraft {
     pub formatter_key: String,
     pub time_range: TimeRange,
     pub text: String,
+    /// True when AI polish was requested but failed/unavailable, so `text` is
+    /// the deterministic draft. Lets the UI surface the fallback instead of it
+    /// being silent. `None` when polish wasn't requested.
+    #[serde(default)]
+    pub ai_polish_fell_back: Option<String>,
 }

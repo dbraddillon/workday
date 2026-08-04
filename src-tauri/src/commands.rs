@@ -5,9 +5,7 @@ use crate::config::{self, AppSettings};
 use crate::db::{repo, settings_repo, Db};
 use crate::delivery::{DeliveryMethod, DeliveryResult, SlackDeliveryService, V1DeliveryService};
 use crate::model::{Issue, StandupDraft, StandupModel, StandupNarrative, SyncStatus, TimeRange};
-use crate::standup::summarizer::{
-    ClaudeCliSummarizer, PassthroughSummarizer, Summarizer,
-};
+use crate::standup::summarizer::{ClaudeCliSummarizer, Summarizer};
 use crate::standup::{compose, formatter};
 use crate::{sync, AppState};
 use chrono::{Duration, Utc};
@@ -98,6 +96,14 @@ pub async fn refresh_now(
 
 // ------------------------------- standup ------------------------------------
 
+/// Whether AI polish is available on this machine (a `claude` CLI on PATH).
+/// The UI uses this to show/enable the AI-polish toggle; the app works fully
+/// without it.
+#[tauri::command]
+pub async fn ai_polish_available() -> bool {
+    crate::standup::summarizer::claude_cli_available().await
+}
+
 /// Build the normalized standup model for a time window (no rendering yet, so
 /// the UI can show include/exclude toggles first).
 #[tauri::command]
@@ -115,6 +121,12 @@ pub fn build_standup_model(db: State<Db>, range: String) -> Result<StandupModel,
         doing: settings.thread_doing,
         pairing: settings.thread_pairing,
         post_scrum: settings.thread_post_scrum,
+        blocker: settings.thread_blocker,
+        prompt_doing: settings.thread_prompt_doing,
+        prompt_working: settings.thread_prompt_working,
+        prompt_pairing: settings.thread_prompt_pairing,
+        prompt_blocker: settings.thread_prompt_blocker,
+        prompt_post_scrum: settings.thread_prompt_post_scrum,
     };
     let range = TimeRange {
         start: start.to_rfc3339(),
@@ -139,15 +151,17 @@ pub async fn generate_standup(
     // 3. render
     let base_text = formatter::render_with(&formatter_key, &model);
 
-    // 4. polish (optional; falls back to base text on any error)
+    // 4. polish (optional; falls back to base text on any error, but records
+    //    *that* it fell back so the UI can surface it instead of it being silent)
+    let mut fell_back: Option<String> = None;
     let text = if ai_polish {
         let hint = style_hint.clone().unwrap_or_default();
         match ClaudeCliSummarizer.polish(&base_text, &hint).await {
             Ok(t) => t,
-            Err(_) => PassthroughSummarizer
-                .polish(&base_text, &hint)
-                .await
-                .unwrap_or(base_text.clone()),
+            Err(e) => {
+                fell_back = Some(e);
+                base_text.clone()
+            }
         }
     } else {
         base_text.clone()
@@ -157,6 +171,7 @@ pub async fn generate_standup(
         formatter_key: formatter_key.clone(),
         time_range: model.time_range.clone(),
         text: text.clone(),
+        ai_polish_fell_back: fell_back,
     };
 
     // Write the on-demand context file next to app data.

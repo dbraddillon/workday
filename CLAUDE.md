@@ -48,29 +48,49 @@ rendering are separate — don't collapse them.
 
 ## The AI-summary decision (important context)
 
-The standup "AI polish" reuses the **locally authenticated `claude` CLI**, not a
-hosted API. On this machine the CLI is **Bedrock-backed** (`CLAUDE_CODE_USE_BEDROCK=1`,
-`AWS_PROFILE=ClaudeCode` in `~/.claude/settings.json`), so `standup/summarizer.rs`
-spawns `claude -p …` and it authenticates via the user's own AWS creds — no API
-key, no separate billing. This mirrors the local `~/Repos/ClaudeChat` repo's
-approach.
+**AI polish is fully optional and OFF by default — the app works with no LLM at
+all.** The deterministic formatter (`standup/formatter.rs`) is always the
+baseline. Everything below is an opt-in enhancement.
+
+When enabled, "AI polish" reuses a **locally installed `claude` CLI** (spawns
+`claude -p …` in `standup/summarizer.rs`), inheriting whatever auth the CLI is
+configured with — an Anthropic API key, or a Bedrock/AWS setup, etc. It does not
+require any specific backend. (The original author's machine happens to run a
+Bedrock-backed CLI — `CLAUDE_CODE_USE_BEDROCK=1` / `AWS_PROFILE=…` — but that's
+one configuration, not a requirement.)
+
+Graceful degradation (matters for sharing):
+- `summarizer::claude_cli_available()` preflights `claude --version`; the
+  `ai_polish_available` command gates the UI toggle so a teammate with no CLI is
+  never offered an option that would silently no-op.
+- If polish is requested but the CLI is missing/errors, `generate_standup`
+  returns the deterministic draft AND sets `StandupDraft.ai_polish_fell_back`, so
+  the UI shows a note instead of failing silently.
 
 Two escape hatches, both intentional:
-1. **In-app polish** — `ClaudeCliSummarizer` (opt-in toggle; off by default).
-   Falls back to the deterministic draft on any error.
+1. **In-app polish** — `ClaudeCliSummarizer` (opt-in toggle; hidden if no CLI).
 2. **On-demand, out-of-app** — every generate writes `standup-context.json` to
-   the app data dir (the normalized model + draft + a style sample). You can
-   point *any* running Claude at that file and ask it to reformat/summarize,
-   feeding in example posts as they arrive — no app change needed.
-
-The deterministic formatter (`standup/formatter.rs`) is always the baseline and
-never needs the CLI.
+   the app data dir (the normalized model + draft + a style sample). Point *any*
+   running Claude at that file and ask it to reformat/summarize — no app change,
+   no in-app LLM needed.
 
 ## Conventions
 
 - Keep the popover **compact and dense**; it's a utility, not a dashboard.
 - Add a new formatter by implementing `StandupFormatter` and adding a key in
-  `render_with`. Don't hardcode a single post style.
+  `render_with`. Don't hardcode a single post style. The default is `thread`.
+- The **thread template is fully user-configurable** (a team's standup thread):
+  all 5 prompt emoji + the doing/pairing/blocker/post-scrum answer defaults live
+  in `AppSettings` (`thread_prompt_*`, `thread_*`) and ride to the formatter via
+  `StandupNarrative` — the formatter stays format-agnostic (consumes the model,
+  not settings). The working-on line is always Jira-derived; blockers derive from
+  Jira and fall back to `thread_blocker`.
+- Work items get a **state emoji** from their Jira status via
+  `formatter::state_marker` (keyword match: deploy/released → `:deployparrot:`,
+  merged → `:merged:`, review/PR/QA → `:pull_request:`, else done →
+  `:white_check_mark:`). Status *names* vary per instance — tune the keywords there.
+- Standup lines are **flush-left with `•` bullets**, never space-indented: Slack
+  strips leading whitespace, which mashed multi-item lines together.
 - Add a new source by implementing `WorkSourceConnector` and normalizing to
   `model.rs`. Selection happens in `sync.rs`.
 - Errors from sync are **non-fatal**: recorded in `sync_runs`, cached data still
@@ -84,11 +104,13 @@ never needs the CLI.
   (`nextPageToken`/`isLast`); the classic `/rest/api/3/search` was removed by
   Atlassian (410 Gone, CHANGE-2046). Note `/search/jql` returns only issue `id`
   unless `fields` is passed — keep `FIELDS` populated in `connector/jira.rs`.
-- **AI polish is silent-fallback:** if the `claude` CLI errors or times out
-  (`DEFAULT_TIMEOUT`), `generate_standup` falls back to the deterministic draft
-  without telling the UI. Acceptable for v1; surface the fallback if it confuses.
 - **Poll loop** applies linear backoff on repeated sync failures but has no
   network-reachability check; it just keeps retrying at a longer interval.
+- **Fullscreen float via activation-policy switch:** to appear over a fullscreen/
+  maximized app, `toggle_window` promotes the app to `ActivationPolicy::Regular`
+  on show and reverts to `Accessory` on hide/blur. Trade-off: a Dock icon appears
+  while the popover is open. If that bugs you, the alternative is raising the
+  NSWindow level above fullscreen via objc2 (no Dock icon, but adds unsafe interop).
 
 ## Debugging gotchas (learned the hard way)
 

@@ -23,17 +23,34 @@ pub struct AppSettings {
     /// If true, the app serves fake data and never calls Jira. Great for dev
     /// and for a first-run demo before credentials are entered.
     pub fake_data_mode: bool,
-    // --- Standup thread defaults (used by the "thread" formatter) ---
-    // These fill the freeform prompts the team's standup thread asks for. The
-    // "working on" and "blockers" lines are derived from Jira; these three are
-    // user-authored defaults, edited in Settings.
-    /// Default answer for ":city_sunrise: How are you doing?"
+    // --- Standup thread template (used by the "thread" formatter) ---
+    // The whole 5-prompt template is editable so it can mirror a team's exact
+    // standup thread. Each prompt has a left-side emoji (the subject) and, for
+    // the non-Jira lines, a default answer. The working-on line is always derived
+    // from Jira; blockers derive from Jira but fall back to `thread_blocker`.
+    //
+    // Prompt emoji (left side):
+    #[serde(default = "default_prompt_doing")]
+    pub thread_prompt_doing: String,
+    #[serde(default = "default_prompt_working")]
+    pub thread_prompt_working: String,
+    #[serde(default = "default_prompt_pairing")]
+    pub thread_prompt_pairing: String,
+    #[serde(default = "default_prompt_blocker")]
+    pub thread_prompt_blocker: String,
+    #[serde(default = "default_prompt_post_scrum")]
+    pub thread_prompt_post_scrum: String,
+    // Default answers (right side) for the non-Jira lines:
+    /// Default answer for the "how are you doing" prompt.
     #[serde(default = "default_thread_doing")]
     pub thread_doing: String,
-    /// Default answer for ":two-peas-in-a-pod: Any pairing opportunities?"
+    /// Default answer for the "pairing opportunities" prompt.
     #[serde(default = "default_thread_pairing")]
     pub thread_pairing: String,
-    /// Default answer for ":high-five: Anything for post scrum?"
+    /// Fallback for the blocker line when Jira reports no blockers.
+    #[serde(default = "default_thread_blocker")]
+    pub thread_blocker: String,
+    /// Default answer for the "post scrum" prompt.
     #[serde(default = "default_thread_post_scrum")]
     pub thread_post_scrum: String,
     /// Whether a Jira token is present in the Keychain (derived, never stored).
@@ -54,22 +71,49 @@ impl Default for AppSettings {
                 "assignee = currentUser() AND updated >= -7d ORDER BY updated DESC".to_string(),
             refresh_interval_secs: 300,
             default_recent_range: "24h".to_string(),
-            default_formatter: "default".to_string(),
+            default_formatter: "thread".to_string(),
             ai_polish_enabled: false,
             fake_data_mode: true, // start in fake mode until the user configures Jira
             has_jira_token: false,
+            thread_prompt_doing: default_prompt_doing(),
+            thread_prompt_working: default_prompt_working(),
+            thread_prompt_pairing: default_prompt_pairing(),
+            thread_prompt_blocker: default_prompt_blocker(),
+            thread_prompt_post_scrum: default_prompt_post_scrum(),
             thread_doing: default_thread_doing(),
             thread_pairing: default_thread_pairing(),
+            thread_blocker: default_thread_blocker(),
             thread_post_scrum: default_thread_post_scrum(),
         }
     }
 }
 
+// Prompt emoji defaults (the team's standup thread subjects).
+fn default_prompt_doing() -> String {
+    ":city_sunrise:".to_string()
+}
+fn default_prompt_working() -> String {
+    ":computer:".to_string()
+}
+fn default_prompt_pairing() -> String {
+    ":two-peas-in-a-pod:".to_string()
+}
+fn default_prompt_blocker() -> String {
+    ":blocker:".to_string()
+}
+fn default_prompt_post_scrum() -> String {
+    ":high-five:".to_string()
+}
+
+// Answer defaults for the non-Jira lines.
 fn default_thread_doing() -> String {
     ":batman: :thumbsup_all:".to_string()
 }
 fn default_thread_pairing() -> String {
     ":available:".to_string()
+}
+fn default_thread_blocker() -> String {
+    "Nope".to_string()
 }
 fn default_thread_post_scrum() -> String {
     "Nope".to_string()

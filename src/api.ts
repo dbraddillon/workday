@@ -37,6 +37,9 @@ export const api = {
       styleHint: styleHint ?? null,
     }),
 
+  /** Whether a `claude` CLI is on PATH so AI polish can work. */
+  aiPolishAvailable: () => invoke<boolean>("ai_polish_available"),
+
   recordDelivery: (method: string) =>
     invoke("record_delivery", { method }),
 
