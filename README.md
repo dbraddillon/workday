@@ -12,6 +12,21 @@ single-user, no backend — everything runs on your machine.
 
 <!-- screenshot placeholder -->
 
+## Try it
+
+```bash
+git clone https://github.com/dbraddillon/workday.git
+cd workday && npm install && npm run install-app
+```
+
+Needs **Node, Rust, and Xcode Command Line Tools** (one-liners in
+[Prerequisites](#prerequisites)). It launches in **fake-data mode** so you can
+poke around immediately — then open **Settings** (⚙), turn off *Use fake data*,
+and add your own **Jira email + API token** (create one at
+[id.atlassian.com](https://id.atlassian.com/manage-profile/security/api-tokens)).
+Everything runs locally; nothing is shared. The rest of this README covers the
+details.
+
 ## What it does
 
 - **Menu bar popover** — click the tray icon (or press **⌘⇧J**) to see your work.
