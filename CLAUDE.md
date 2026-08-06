@@ -91,6 +91,24 @@ Two escape hatches, both intentional:
   `:white_check_mark:`). Status *names* vary per instance — tune the keywords there.
 - Standup lines are **flush-left with `•` bullets**, never space-indented: Slack
   strips leading whitespace, which mashed multi-item lines together.
+- **Copy writes two clipboard flavors** (`api.ts` → `copyToClipboard`): a
+  `text/html` rendering from `util.ts` → `draftToSlackHtml`, with the formatter's
+  plain text as the fallback flavor. Slack's composer converts a `<ul>` into a
+  *native* list block, so a bullet the user then types by hand matches the pasted
+  ones — pasting literal `•` text gives a different glyph and looser spacing.
+  Formatters stay plain-text-only; the HTML is a delivery-time concern.
+  - The block structure mirrors **what Slack itself puts on the clipboard**, found
+    by copying a message with a typed bullet and decoding the HTML flavor
+    (`osascript -e 'the clipboard as «class HTML»'` → hex → `xxd -r -p`). Slack
+    emits runs of non-bullet lines as ONE `<div>` joined by `<br>`, each bullet
+    run as a sibling `<ul>`. Use that same shape — a `<div>` per line risks being
+    read as separate blocks with extra spacing. Re-run that decode if paste
+    fidelity ever regresses.
+  - `draftToSlackHtml` also converts mrkdwn `*bold*`/`_italic_` to `<b>`/`<i>`:
+    Slack honors those in a plain-text paste but NOT inside an HTML one, so the
+    `default`/`plain` formatters would otherwise paste literal asterisks. The
+    whitespace boundary on the opening delimiter is what stops
+    `:white_check_mark:` becoming `white<i>check</i>mark`.
 - Add a new source by implementing `WorkSourceConnector` and normalizing to
   `model.rs`. Selection happens in `sync.rs`.
 - Errors from sync are **non-fatal**: recorded in `sync_runs`, cached data still
