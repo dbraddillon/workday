@@ -125,6 +125,7 @@ fn prompt<'a>(override_: &'a str, fallback: &'a str) -> &'a str {
 ///   merged                               → :merged:
 ///   in review / PR / code review / QA    → :pull_request:
 ///   otherwise done (statusCategory=done) → :white_check_mark:
+///   actively in development              → :work-in-progress:
 fn state_marker(status_name: &str, status_category: &str) -> String {
     let s = status_name.to_ascii_lowercase();
     let has = |needle: &str| s.contains(needle);
@@ -137,6 +138,18 @@ fn state_marker(status_name: &str, status_category: &str) -> String {
         " :pull_request:".into()
     } else if status_category == "done" {
         " :white_check_mark:".into()
+    } else if status_category == "indeterminate"
+        || has("progress")
+        || has("development")
+        || has("developing")
+        || has("doing")
+        || has("started")
+        || has("wip")
+    {
+        // Actively being worked (Jira's "indeterminate" category = between To Do
+        // and Done), or a status name that reads as in-flight. Backlog/To Do
+        // items (category "new") stay unmarked.
+        " :work-in-progress:".into()
     } else {
         String::new()
     }
@@ -271,8 +284,8 @@ mod tests {
         let lines: Vec<&str> = out.lines().collect();
         assert_eq!(lines[0], ":city_sunrise: Doing well!");
         assert_eq!(lines[1], ":computer:"); // prompt on its own line
-        assert_eq!(lines[2], "• ABC-1 — First"); // flush-left bullets (Slack-safe)
-        assert_eq!(lines[3], "• ABC-2 — Second");
+        assert_eq!(lines[2], "• ABC-1 — First :work-in-progress:"); // flush-left bullets (Slack-safe)
+        assert_eq!(lines[3], "• ABC-2 — Second :work-in-progress:");
         assert_eq!(lines[4], ":two-peas-in-a-pod: Free after standup");
         assert_eq!(lines[5], ":blocker: Nope");
         assert_eq!(lines[6], ":high-five: —"); // blank post-scrum → dash
@@ -305,15 +318,16 @@ mod tests {
             vec![],
         );
         let out = ThreadFormatter.render(&m);
-        // In-progress (no mark), done after (checkmark), both bulleted.
-        assert!(out.contains("• ABC-1 — Ongoing"));
+        // In-progress (WIP mark), done after (checkmark), both bulleted.
+        assert!(out.contains("• ABC-1 — Ongoing :work-in-progress:"));
         assert!(out.contains("• ABC-9 — Finished :white_check_mark:"));
     }
 
     #[test]
     fn state_markers_by_status() {
-        // in-progress / backlog → no marker
-        assert_eq!(state_marker("In Progress", "indeterminate"), "");
+        // actively in development → :work-in-progress:
+        assert_eq!(state_marker("In Progress", "indeterminate"), " :work-in-progress:");
+        // backlog / To Do (category "new") → no marker
         assert_eq!(state_marker("To Do", "new"), "");
         // review family → :pull_request:
         assert_eq!(state_marker("In Review", "indeterminate"), " :pull_request:");
