@@ -11,6 +11,7 @@ mod connector;
 mod db;
 mod delivery;
 mod model;
+mod popover;
 mod standup;
 mod sync;
 
@@ -70,13 +71,15 @@ impl AppState {
 /// the tray icon is on. This matters on multi-monitor + Retina setups: mixing
 /// the window's physical `outer_size` with logical math (or assuming one scale
 /// factor) placed the popover off every display — visible=true but nowhere seen.
+///
+/// Float-above-fullscreen behavior lives in `popover.rs` (an `NSPanel`), not
+/// here. A toggle that dismisses the popover also unpins it: the pin means "keep
+/// this open while I work", and an explicit dismissal ends that.
 fn toggle_window(app: &tauri::AppHandle, tray_rect: Option<tauri::Rect>) {
     let Some(window) = app.get_webview_window("main") else { return };
-    if window.is_visible().unwrap_or(false) {
-        let _ = window.hide();
-        // Drop back to accessory (no Dock icon) once the popover is dismissed.
-        #[cfg(target_os = "macos")]
-        let _ = app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+    if popover::is_visible(app) {
+        popover::set_pinned(false);
+        popover::hide(app);
         return;
     }
 
@@ -128,19 +131,12 @@ fn toggle_window(app: &tauri::AppHandle, tray_rect: Option<tauri::Rect>) {
         }
     }
 
-    // Re-assert float-above behavior on each show. As an LSUIElement/Accessory
-    // app, the popover otherwise slips behind other apps' windows — worse, it
-    // won't come forward over a *fullscreen/maximized* app at all, because an
-    // accessory app never truly activates. Briefly promoting to Regular lets the
-    // app activate so the window rises above fullscreen; we revert to Accessory
-    // on hide. Cost: a Dock icon appears while the popover is open.
-    #[cfg(target_os = "macos")]
-    let _ = app.set_activation_policy(tauri::ActivationPolicy::Regular);
-    let _ = window.set_always_on_top(true);
-    #[cfg(target_os = "macos")]
-    let _ = window.set_visible_on_all_workspaces(true);
-    let _ = window.show();
-    let _ = window.set_focus();
+    // Float-above-everything is a property of the panel itself, configured once
+    // in `popover::init` — nothing to re-assert per show. Note we deliberately do
+    // NOT call `set_always_on_top` / `set_visible_on_all_workspaces` here: they
+    // overwrite the panel's collection behavior and would drop
+    // `fullScreenAuxiliary`, undoing the fullscreen fix. See `popover.rs`.
+    popover::show(app);
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -148,6 +144,12 @@ pub fn run() {
     let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init());
+
+    // Panel support for the popover (floats over fullscreen apps). See popover.rs.
+    #[cfg(target_os = "macos")]
+    {
+        builder = builder.plugin(tauri_nspanel::init());
+    }
 
     // Launch-at-login. Uses the OS-native mechanism (macOS Login Items). The
     // toggle in Settings enables/disables it at runtime.
@@ -178,9 +180,16 @@ pub fn run() {
 
     builder
         .setup(|app| {
-            // On macOS, run as a menu bar accessory (no Dock icon).
+            // On macOS, run as a menu bar accessory (no Dock icon). Unlike before,
+            // this is now set once and never flipped: a nonactivating panel shows
+            // over fullscreen apps without the app ever activating.
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+
+            // Convert the popover window into an NSPanel. Must happen before the
+            // first show — and note it swizzles the window's class, so anything
+            // holding a `WebviewWindow` keeps working afterward.
+            popover::init(app.handle());
 
             // ---- Data layer: open SQLite in the app data dir. ----
             let data_dir = app.path().app_data_dir().expect("app data dir");
@@ -251,16 +260,16 @@ pub fn run() {
             }
 
             // ---- Hide the window when it loses focus (popover behavior). ----
+            // Skipped while pinned, so the popover can stay open while you work in
+            // another app. This relies on Tauri's own NSWindowDelegate, which is
+            // why popover.rs never installs a panel event handler over it.
             if let Some(win) = app.get_webview_window("main") {
-                let w = win.clone();
                 let app_handle = app.handle().clone();
                 win.on_window_event(move |event| {
                     if let WindowEvent::Focused(false) = event {
-                        let _ = w.hide();
-                        // Revert to accessory so the Dock icon (added on show for
-                        // fullscreen float) doesn't linger after clicking away.
-                        #[cfg(target_os = "macos")]
-                        let _ = app_handle.set_activation_policy(tauri::ActivationPolicy::Accessory);
+                        if !popover::is_pinned() {
+                            popover::hide(&app_handle);
+                        }
                     }
                 });
             }
@@ -309,6 +318,8 @@ pub fn run() {
             commands::get_autostart,
             commands::set_autostart,
             commands::hide_window,
+            commands::get_pinned,
+            commands::set_pinned,
             commands::ui_ready,
         ])
         .run(tauri::generate_context!())

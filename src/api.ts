@@ -49,6 +49,17 @@ export const api = {
     invoke<boolean>("set_autostart", { enabled }),
 
   hideWindow: () => invoke("hide_window"),
+
+  /**
+   * Pin state: whether the popover stays open after losing focus.
+   *
+   * Session-only on purpose — it isn't part of `AppSettings` and doesn't survive
+   * a relaunch. Read it on mount rather than assuming `false`, since the popover
+   * can be reopened while still pinned.
+   */
+  getPinned: () => invoke<boolean>("get_pinned"),
+  setPinned: (pinned: boolean) => invoke<boolean>("set_pinned", { pinned }),
+
   uiReady: () => invoke("ui_ready"),
 };
 

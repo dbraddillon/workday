@@ -5,6 +5,7 @@ use crate::config::{self, AppSettings};
 use crate::db::{repo, settings_repo, Db};
 use crate::delivery::{DeliveryMethod, DeliveryResult, SlackDeliveryService, V1DeliveryService};
 use crate::model::{Issue, StandupDraft, StandupModel, StandupNarrative, SyncStatus, TimeRange};
+use crate::popover;
 use crate::standup::summarizer::{ClaudeCliSummarizer, Summarizer};
 use crate::standup::{compose, formatter};
 use crate::{sync, AppState};
@@ -234,11 +235,28 @@ pub fn set_autostart(app: tauri::AppHandle, enabled: bool) -> Result<bool, Strin
 // -------------------------------- window ------------------------------------
 
 /// Hide the popover (used by the "close" affordance / Escape).
+///
+/// Goes through `popover` rather than `window.hide()` so the panel's own
+/// ordering is used, and so an explicit dismissal clears the pin — same rule as
+/// the tray toggle.
 #[tauri::command]
 pub fn hide_window(app: tauri::AppHandle) {
-    if let Some(w) = app.get_webview_window("main") {
-        let _ = w.hide();
-    }
+    popover::set_pinned(false);
+    popover::hide(&app);
+}
+
+/// Whether the popover is pinned open (survives losing focus).
+#[tauri::command]
+pub fn get_pinned() -> bool {
+    popover::is_pinned()
+}
+
+/// Pin/unpin the popover. Session-only state — intentionally not persisted to
+/// `AppSettings`; see `popover.rs`.
+#[tauri::command]
+pub fn set_pinned(pinned: bool) -> bool {
+    popover::set_pinned(pinned);
+    pinned
 }
 
 /// Persist the last-known dark/light or other trivial UI prefs is out of scope

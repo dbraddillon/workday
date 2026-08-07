@@ -1,10 +1,12 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Capability for the main popover window",
+  "description": "Capability for the main popover window. Note `core:window:deny-internal-toggle-maximize`: the popover is an NSPanel with fullScreenAuxiliary collection behavior (see src/popover.rs), and maximizing such a panel crashes. `core:default` would otherwise allow it, and double-clicking the header's data-tauri-drag-region is exactly the gesture that triggers it. Do not remove.",
   "windows": ["main"],
   "permissions": [
     "core:default",
+    "core:window:allow-start-dragging",
+    "core:window:deny-internal-toggle-maximize",
     "core:window:allow-hide",
     "core:window:allow-show",
     "core:window:allow-set-focus",

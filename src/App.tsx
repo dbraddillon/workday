@@ -15,6 +15,9 @@ function App() {
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [sync, setSync] = useState<SyncStatus | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  // Popover pinned open? Session state owned by the backend (see popover.rs), so
+  // read it on mount — the popover can be reopened while still pinned.
+  const [pinned, setPinned] = useState(false);
   // Bumped after a sync so tabs re-fetch.
   const [dataVersion, setDataVersion] = useState(0);
 
@@ -30,9 +33,22 @@ function App() {
     api.uiReady().catch(() => {});
     loadSettings();
     loadSync();
+    api.getPinned().then(setPinned).catch(() => {});
     // Poll sync status so freshness stays current while the popover is open.
     const t = setInterval(loadSync, 5000);
-    return () => clearInterval(t);
+
+    // The tray icon and ⌘⇧J also clear the pin when they dismiss the popover, and
+    // those paths never reach this webview (it isn't remounted on hide/show). Re-
+    // read on focus so the pin icon can't drift from the real backend state.
+    const onFocus = () => {
+      api.getPinned().then(setPinned).catch(() => {});
+    };
+    window.addEventListener("focus", onFocus);
+
+    return () => {
+      clearInterval(t);
+      window.removeEventListener("focus", onFocus);
+    };
   }, [loadSettings, loadSync]);
 
   const refresh = useCallback(async () => {
@@ -46,12 +62,29 @@ function App() {
     }
   }, []);
 
+  // Only reflect the pin locally once the backend has it, so the icon never
+  // claims a state the hide-on-blur handler isn't actually honoring.
+  const togglePin = useCallback(async () => {
+    const next = !pinned;
+    try {
+      setPinned(await api.setPinned(next));
+    } catch {
+      /* leave the toggle as-is; the popover still works, it just isn't pinned */
+    }
+  }, [pinned]);
+
   // Escape closes the popover (matches native menu bar feel).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         if (showSettings) setShowSettings(false);
-        else api.hideWindow();
+        else {
+          // `hide_window` also clears the pin (an explicit dismissal ends "keep
+          // this open"). The webview isn't remounted on hide/show, so mirror that
+          // locally or the pin icon would stay lit against a cleared backend.
+          api.hideWindow();
+          setPinned(false);
+        }
       }
     };
     window.addEventListener("keydown", onKey);
@@ -66,6 +99,8 @@ function App() {
         onRefresh={refresh}
         onToggleSettings={() => setShowSettings((s) => !s)}
         settingsOpen={showSettings}
+        pinned={pinned}
+        onTogglePin={togglePin}
       />
 
       {showSettings ? (

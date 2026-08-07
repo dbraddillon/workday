@@ -41,3 +41,10 @@ base64 = "0.22"
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-autostart = "2"
+
+# NSPanel wrapper: lets the popover float over fullscreen apps without the app
+# ever activating (see `popover.rs`). Not published to crates.io, so this is a
+# git dep pinned to an exact rev — never a bare `branch`, which would silently
+# re-resolve and could break the unsafe objc interop underneath us.
+[target.'cfg(target_os = "macos")'.dependencies]
+tauri-nspanel = { git = "https://github.com/ahkohd/tauri-nspanel", rev = "a3122e894383aa068ec5365a42994e3ac94ba1b6" }

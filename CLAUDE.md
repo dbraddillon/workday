@@ -124,11 +124,41 @@ Two escape hatches, both intentional:
   unless `fields` is passed — keep `FIELDS` populated in `connector/jira.rs`.
 - **Poll loop** applies linear backoff on repeated sync failures but has no
   network-reachability check; it just keeps retrying at a longer interval.
-- **Fullscreen float via activation-policy switch:** to appear over a fullscreen/
-  maximized app, `toggle_window` promotes the app to `ActivationPolicy::Regular`
-  on show and reverts to `Accessory` on hide/blur. Trade-off: a Dock icon appears
-  while the popover is open. If that bugs you, the alternative is raising the
-  NSWindow level above fullscreen via objc2 (no Dock icon, but adds unsafe interop).
+- **`tauri-nspanel` is a pinned git dependency** (no crates.io release). It's
+  pinned to an exact `rev` in `src-tauri/Cargo.toml` — never relax that to a bare
+  `branch`, which would silently re-resolve unsafe objc interop under us. See
+  "Popover = NSPanel" below.
+
+## Popover = NSPanel (don't regress this)
+
+The popover is an **`NSPanel`**, not a plain window — that's what lets it appear
+over fullscreen/maximized apps *without a Dock icon*. It's the same mechanism
+native menu bar apps (JetBrains Toolbox, Spotlight) use; no special permissions
+are involved. All of it lives in `src-tauri/src/popover.rs`, which owns
+show/hide/pin; `lib.rs` keeps only tray positioning. Three attributes matter:
+`.nonactivatingPanel` style mask, `fullScreenAuxiliary | canJoinAllSpaces`
+collection behavior, and a floating level.
+
+Three ways to accidentally undo it:
+
+- **Never call `set_always_on_top` or `set_visible_on_all_workspaces` on the
+  window.** Both write the same AppKit properties the panel manages, and
+  `set_visible_on_all_workspaces` sets collection behavior to `canJoinAllSpaces`
+  *alone* — dropping `fullScreenAuxiliary` and restoring the original bug. (The
+  `alwaysOnTop: true` in `tauri.conf.json` is fine: it's applied at window
+  creation, before `popover::init` runs, and is a fallback if conversion fails.)
+- **Never install the plugin's `set_event_handler`.** It *replaces* the window's
+  `NSWindowDelegate`, which on a Tauri window is Tauri's own — and that's what
+  raises `WindowEvent::Focused(false)`, i.e. all of hide-on-click-away.
+- **Keep `core:window:deny-internal-toggle-maximize`** in
+  `capabilities/default.json`. Maximizing a `fullScreenAuxiliary` panel *crashes*;
+  `core:default` would permit it, and double-clicking the header's
+  `data-tauri-drag-region` is exactly that gesture.
+
+**Pin** (📍/📌 in the header) suppresses only the blur-hide, so the popover can
+stay open while you work elsewhere. It's session state in `popover.rs` — not
+`AppSettings` — and any explicit dismissal (tray, Escape, ⌘⇧J) clears it. The
+webview isn't remounted on show/hide, so `App.tsx` re-reads it on `focus`.
 
 ## Debugging gotchas (learned the hard way)
 

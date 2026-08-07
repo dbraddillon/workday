@@ -7,9 +7,19 @@ interface Props {
   onRefresh: () => void;
   onToggleSettings: () => void;
   settingsOpen: boolean;
+  pinned: boolean;
+  onTogglePin: () => void;
 }
 
-export function Header({ sync, refreshing, onRefresh, onToggleSettings, settingsOpen }: Props) {
+export function Header({
+  sync,
+  refreshing,
+  onRefresh,
+  onToggleSettings,
+  settingsOpen,
+  pinned,
+  onTogglePin,
+}: Props) {
   const stale = sync && !sync.ok;
   const last = sync?.last_success_at ?? sync?.last_run_at ?? null;
 
@@ -27,6 +37,15 @@ export function Header({ sync, refreshing, onRefresh, onToggleSettings, settings
         </span>
       </div>
       <div className="header-actions">
+        <button
+          className={`icon-btn ${pinned ? "active" : ""}`}
+          onClick={onTogglePin}
+          title={pinned ? "Unpin (close when it loses focus)" : "Keep open while I work"}
+          aria-label={pinned ? "Unpin popover" : "Pin popover open"}
+          aria-pressed={pinned}
+        >
+          {pinned ? "📌" : "📍"}
+        </button>
         <button
           className="icon-btn"
           onClick={onRefresh}
