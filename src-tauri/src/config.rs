@@ -56,6 +56,35 @@ pub struct AppSettings {
     /// Whether a Jira token is present in the Keychain (derived, never stored).
     #[serde(default)]
     pub has_jira_token: bool,
+    // --- GitHub review queue (Reviews tab) ---
+    // No token here or in the Keychain: the connector shells out to `gh`, which
+    // already holds the credential.
+    /// Whether to fetch the review queue at all.
+    #[serde(default)]
+    pub github_enabled: bool,
+    /// Org login, e.g. "healthsparq".
+    #[serde(default)]
+    pub github_org: String,
+    /// The viewer's GitHub login. Used to exclude their own PRs and to resolve
+    /// the direct-request/assignee trump rules.
+    #[serde(default)]
+    pub github_login: String,
+    /// Team slugs whose review requests count, comma-separated. Must be narrow:
+    /// an org-wide team returns hundreds of open PRs and swamps the tab.
+    #[serde(default)]
+    pub github_teams: String,
+    /// Age window in days, applied to PR creation date.
+    #[serde(default = "default_github_window_days")]
+    pub github_window_days: u32,
+    /// Also include PRs authored by team members, not just PRs where a team was
+    /// tagged for review. These overlap far less than expected — a PR opened
+    /// without tagging anyone is invisible to the team-tagged query.
+    #[serde(default = "default_true")]
+    pub github_include_team_authored: bool,
+    /// Cap on rows shown. The count before capping is reported separately so the
+    /// UI can say "showing N of M".
+    #[serde(default = "default_github_max_results")]
+    pub github_max_results: u32,
 }
 
 impl Default for AppSettings {
@@ -84,8 +113,37 @@ impl Default for AppSettings {
             thread_pairing: default_thread_pairing(),
             thread_blocker: default_thread_blocker(),
             thread_post_scrum: default_thread_post_scrum(),
+            github_enabled: false,
+            github_org: String::new(),
+            github_login: String::new(),
+            github_teams: String::new(),
+            github_window_days: default_github_window_days(),
+            github_include_team_authored: default_true(),
+            github_max_results: default_github_max_results(),
         }
     }
+}
+
+impl AppSettings {
+    /// `github_teams` split into slugs, trimmed, empties dropped.
+    pub fn github_team_list(&self) -> Vec<String> {
+        self.github_teams
+            .split(',')
+            .map(|t| t.trim())
+            .filter(|t| !t.is_empty())
+            .map(|t| t.to_string())
+            .collect()
+    }
+}
+
+fn default_true() -> bool {
+    true
+}
+fn default_github_window_days() -> u32 {
+    7
+}
+fn default_github_max_results() -> u32 {
+    40
 }
 
 // Prompt emoji defaults (the team's standup thread subjects).

@@ -42,6 +42,60 @@ pub struct ActivityEvent {
     pub text_summary: Option<String>,
 }
 
+/// A pull request awaiting review, normalized. Parallel to `Issue`: the raw
+/// GitHub GraphQL shape stays inside `connector::github`, same rule as Jira.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PullRequest {
+    pub repo: String,   // "provider-domain-service" (name only; org is implied)
+    pub number: i64,
+    pub title: String,
+    pub url: String,
+    pub author: String,
+    pub created_at: String, // RFC3339
+    pub updated_at: String, // RFC3339
+    /// GitHub's rollup: "REVIEW_REQUIRED" | "CHANGES_REQUESTED" | "APPROVED" | "NONE".
+    pub review_decision: String,
+    pub additions: i64,
+    pub deletions: i64,
+    pub changed_files: i64,
+    /// Human reviewers who have left a review. Bot reviewers (Copilot) are
+    /// filtered out in the connector: they inflate the count and make an
+    /// unreviewed PR look attended-to.
+    pub human_reviewers: Vec<String>,
+    /// Why this PR is in the list: "team" (a team of mine was requested),
+    /// "authored" (a teammate opened it), "direct" (review requested of me
+    /// personally), "assigned" (assigned to me). A PR can match several.
+    pub reasons: Vec<String>,
+    /// True when matched by a reason that ignores the age window (direct request
+    /// or assignment). Sorted to the top and never aged out.
+    pub is_direct: bool,
+    /// Set once the user ticks the PR off in the Reviews tab. Carries the
+    /// RFC3339 checkoff time so the standup composer can count it in a window.
+    pub reviewed_at: Option<String>,
+}
+
+/// A review the user actually submitted on GitHub. Distinct from a checkoff: this
+/// is observed fact (GitHub recorded the review), whereas a checkoff is the user
+/// asserting they handled a PR. Both feed the standup's review line.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SubmittedReview {
+    pub repo: String,
+    pub number: i64,
+    pub title: String,
+    pub url: String,
+    /// PR author, so the row reads as "reviewed X's change".
+    pub author: String,
+    /// When the review was submitted. This is the review's own timestamp, NOT the
+    /// PR's `updatedAt` — filtering on the latter counts old reviews on
+    /// recently-touched PRs and badly overstates a day's work.
+    pub submitted_at: String,
+    /// "APPROVED" | "CHANGES_REQUESTED" | "COMMENTED" | "DISMISSED".
+    pub state: String,
+    /// PR state at fetch time: "OPEN" | "MERGED" | "CLOSED". Most reviewed PRs
+    /// merge quickly, which is why they can't be found in the open queue.
+    pub pr_state: String,
+}
+
 /// Result of a sync run, surfaced to the UI for freshness/error display.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SyncStatus {
@@ -130,6 +184,11 @@ pub struct StandupModel {
     /// for thread-style formatters; ignored by others.
     #[serde(default)]
     pub narrative: StandupNarrative,
+    /// PRs the user ticked off in the Reviews tab within this window. A count,
+    /// not a list: the formatter decides whether and how to render it, and the
+    /// model stays format-agnostic. Zero means "say nothing".
+    #[serde(default)]
+    pub reviewed_pr_count: i64,
 }
 
 /// A rendered draft ready for review/delivery.

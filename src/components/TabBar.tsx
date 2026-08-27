@@ -3,6 +3,7 @@ import type { Tab } from "../types";
 const TABS: { id: Tab; label: string }[] = [
   { id: "in_progress", label: "In Progress" },
   { id: "recent", label: "Recent" },
+  { id: "reviews", label: "Reviews" },
   { id: "standup", label: "Standup" },
 ];
 

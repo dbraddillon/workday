@@ -18,6 +18,52 @@ export interface Issue {
   labels: string[];
 }
 
+export interface PullRequest {
+  repo: string;
+  number: number;
+  title: string;
+  url: string;
+  author: string;
+  created_at: string;
+  updated_at: string;
+  review_decision: string; // "REVIEW_REQUIRED" | "CHANGES_REQUESTED" | "APPROVED" | "NONE"
+  additions: number;
+  deletions: number;
+  changed_files: number;
+  // Bot reviewers (Copilot) are filtered out in the connector.
+  human_reviewers: string[];
+  // "team" | "authored" | "direct" | "assigned"; a PR can match several.
+  reasons: string[];
+  // Matched by a reason that ignores the age window (direct request/assignment).
+  is_direct: boolean;
+  reviewed_at?: string | null;
+}
+
+// A review the user submitted, as GitHub recorded it. Not a subset of the queue:
+// a reviewed PR usually merges within a day and so leaves the open queue.
+export interface SubmittedReview {
+  repo: string;
+  number: number;
+  title: string;
+  url: string;
+  // PR author, so the row reads as "reviewed X's change".
+  author: string;
+  submitted_at: string;
+  // "APPROVED" | "CHANGES_REQUESTED" | "COMMENTED" | "DISMISSED"
+  state: string;
+  // "OPEN" | "MERGED" | "CLOSED"
+  pr_state: string;
+}
+
+export interface ReviewQueue {
+  prs: PullRequest[];
+  // Pre-cap count, so the UI can say "showing N of M".
+  total: number;
+  done: SubmittedReview[];
+  gh_available: boolean;
+  enabled: boolean;
+}
+
 export interface SyncStatus {
   last_run_at?: string | null;
   last_success_at?: string | null;
@@ -68,6 +114,8 @@ export interface StandupModel {
   sections: StandupSection[];
   blockers: string[];
   narrative: StandupNarrative;
+  // PRs ticked off in the window; 0 renders no line at all.
+  reviewed_pr_count: number;
 }
 
 export interface StandupDraft {
@@ -100,8 +148,16 @@ export interface AppSettings {
   thread_pairing: string;
   thread_blocker: string;
   thread_post_scrum: string;
+  // GitHub review queue. No token: the backend shells out to the authed `gh` CLI.
+  github_enabled: boolean;
+  github_org: string;
+  github_login: string;
+  github_teams: string; // comma-separated slugs
+  github_window_days: number;
+  github_include_team_authored: boolean;
+  github_max_results: number;
 }
 
 // "standup" is the day-aware window: Mon/Sun reach back to Friday, else yesterday.
 export type RecentRange = "standup" | "today" | "24h" | "3d" | "7d";
-export type Tab = "in_progress" | "recent" | "standup";
+export type Tab = "in_progress" | "recent" | "reviews" | "standup";

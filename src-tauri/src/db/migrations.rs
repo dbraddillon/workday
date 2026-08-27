@@ -77,6 +77,60 @@ const MIGRATIONS: &[&str] = &[
         destination_summary TEXT
     );
     "#,
+    // 2: GitHub review queue — cached PRs plus durable checkoffs.
+    r#"
+    CREATE TABLE IF NOT EXISTS pull_requests (
+        repo            TEXT NOT NULL,
+        number          INTEGER NOT NULL,
+        title           TEXT NOT NULL,
+        url             TEXT NOT NULL,
+        author          TEXT NOT NULL,
+        created_at      TEXT NOT NULL,
+        updated_at      TEXT NOT NULL,
+        review_decision TEXT NOT NULL,
+        additions       INTEGER NOT NULL DEFAULT 0,
+        deletions       INTEGER NOT NULL DEFAULT 0,
+        changed_files   INTEGER NOT NULL DEFAULT 0,
+        reviewers_json  TEXT NOT NULL DEFAULT '[]',
+        reasons_json    TEXT NOT NULL DEFAULT '[]',
+        is_direct       INTEGER NOT NULL DEFAULT 0,
+        last_seen_at    TEXT NOT NULL,
+        PRIMARY KEY (repo, number)
+    );
+    CREATE INDEX IF NOT EXISTS idx_pr_created ON pull_requests(created_at);
+
+    -- Deliberately NOT a column on pull_requests: a checkoff has to outlive the
+    -- PR falling out of the query window (merged, approved, or aged past the
+    -- window), otherwise the standup count loses reviews the moment they land.
+    CREATE TABLE IF NOT EXISTS pr_review_checkoffs (
+        repo        TEXT NOT NULL,
+        number      INTEGER NOT NULL,
+        checked_at  TEXT NOT NULL,
+        title       TEXT,
+        url         TEXT,
+        PRIMARY KEY (repo, number)
+    );
+    CREATE INDEX IF NOT EXISTS idx_checkoff_at ON pr_review_checkoffs(checked_at);
+    "#,
+    // 3: reviews the user actually submitted on GitHub. Separate from
+    // pr_review_checkoffs: this is observed fact from GitHub, that table is the
+    // user asserting they handled something. Most reviewed PRs merge within a
+    // day, so they never appear in the open review queue and can only be counted
+    // from here.
+    r#"
+    CREATE TABLE IF NOT EXISTS submitted_reviews (
+        repo         TEXT NOT NULL,
+        number       INTEGER NOT NULL,
+        title        TEXT NOT NULL DEFAULT '',
+        url          TEXT NOT NULL DEFAULT '',
+        author       TEXT NOT NULL DEFAULT '',
+        submitted_at TEXT NOT NULL,
+        state        TEXT NOT NULL DEFAULT '',
+        pr_state     TEXT NOT NULL DEFAULT '',
+        PRIMARY KEY (repo, number, submitted_at)
+    );
+    CREATE INDEX IF NOT EXISTS idx_submitted_at ON submitted_reviews(submitted_at);
+    "#,
 ];
 
 pub fn run(conn: &Connection) -> anyhow::Result<()> {

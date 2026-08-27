@@ -95,6 +95,111 @@ pub async fn refresh_now(
     repo::sync_status(&conn).map_err(|e| e.to_string())
 }
 
+// ------------------------------ reviews (GitHub) ----------------------------
+
+/// The review queue, plus whether the source is usable and how many rows the cap
+/// hid. `total` is the pre-cap count so the UI can say "showing N of M" rather
+/// than truncating silently.
+#[derive(serde::Serialize)]
+pub struct ReviewQueue {
+    pub prs: Vec<crate::model::PullRequest>,
+    pub total: usize,
+    /// Reviews the user submitted recently, newest first. Not a subset of `prs`:
+    /// a reviewed PR usually merges within a day and so leaves the open queue.
+    pub done: Vec<crate::model::SubmittedReview>,
+    /// False when `gh` is missing or unauthenticated — the UI explains rather
+    /// than showing an unexplained empty list.
+    pub gh_available: bool,
+    pub enabled: bool,
+}
+
+/// How far back the Reviews tab shows submitted reviews. Shorter than the synced
+/// history (`sync::REVIEW_HISTORY_DAYS`), which has to cover a standup range
+/// picked after the fact.
+const DONE_DISPLAY_DAYS: i64 = 7;
+
+fn done_since() -> String {
+    (Utc::now() - chrono::Duration::days(DONE_DISPLAY_DAYS)).to_rfc3339()
+}
+
+/// Whether a `gh` CLI is present AND authenticated, so the Reviews tab can work.
+/// Mirrors `ai_polish_available`: gate the feature rather than fail silently.
+#[tauri::command]
+pub async fn gh_available() -> bool {
+    crate::connector::github::gh_available().await
+}
+
+/// Read the cached review queue. Does not hit the network — the poll loop
+/// refreshes it (see `sync::sync_review_queue`).
+#[tauri::command]
+pub async fn get_review_queue(
+    db: State<'_, Db>,
+) -> Result<ReviewQueue, String> {
+    let (settings, prs, done) = {
+        let conn = db.0.lock().map_err(|_| "db lock poisoned")?;
+        let s = settings_repo::load(&conn);
+        let prs = repo::pull_requests(&conn).map_err(|e| e.to_string())?;
+        let done = repo::submitted_reviews_since(&conn, &done_since()).map_err(|e| e.to_string())?;
+        (s, prs, done)
+    };
+    // Only preflight `gh` when the feature is on; the check spawns a process and
+    // there is no reason to pay for it on every read otherwise.
+    let gh_ok = if settings.github_enabled {
+        crate::connector::github::gh_available().await
+    } else {
+        false
+    };
+    let total = prs.len();
+    Ok(ReviewQueue {
+        prs,
+        total,
+        done,
+        gh_available: gh_ok,
+        enabled: settings.github_enabled,
+    })
+}
+
+/// Force a review-queue refresh now (the Reviews tab's own refresh).
+#[tauri::command]
+pub async fn refresh_reviews(db: State<'_, Db>) -> Result<ReviewQueue, String> {
+    let settings = {
+        let conn = db.0.lock().map_err(|_| "db lock poisoned")?;
+        settings_repo::load(&conn)
+    };
+    let total = sync::sync_review_queue(&db, &settings).await?;
+    // Submitted reviews are a second query; a failure there must not fail the
+    // refresh, since the queue itself already came back.
+    let _ = sync::sync_submitted_reviews(&db, &settings).await;
+    let (prs, done) = {
+        let conn = db.0.lock().map_err(|_| "db lock poisoned")?;
+        (
+            repo::pull_requests(&conn).map_err(|e| e.to_string())?,
+            repo::submitted_reviews_since(&conn, &done_since()).map_err(|e| e.to_string())?,
+        )
+    };
+    Ok(ReviewQueue {
+        prs,
+        total,
+        done,
+        gh_available: true, // a successful fetch proves it
+        enabled: settings.github_enabled,
+    })
+}
+
+/// Tick a PR off as reviewed (or untick it). Persisted separately from the PR
+/// cache so it survives the PR leaving the window.
+#[tauri::command]
+pub fn set_pr_reviewed(
+    db: State<Db>,
+    repo_name: String,
+    number: i64,
+    reviewed: bool,
+) -> Result<(), String> {
+    let now = Utc::now().to_rfc3339();
+    let conn = db.0.lock().map_err(|_| "db lock poisoned")?;
+    repo::set_pr_checkoff(&conn, &repo_name, number, reviewed, &now).map_err(|e| e.to_string())
+}
+
 // ------------------------------- standup ------------------------------------
 
 /// Whether AI polish is available on this machine (a `claude` CLI on PATH).
@@ -129,12 +234,18 @@ pub fn build_standup_model(db: State<Db>, range: String) -> Result<StandupModel,
         prompt_blocker: settings.thread_prompt_blocker,
         prompt_post_scrum: settings.thread_prompt_post_scrum,
     };
+    // PRs ticked off in the same window feed the optional reviews line.
+    // Reviews GitHub recorded, unioned with manual checkoffs: a review on a PR
+    // that never entered the queue still counts, and one that's both counts once.
+    let reviewed =
+        repo::review_credit_count_in_range(&conn, &start.to_rfc3339(), &end.to_rfc3339())
+            .unwrap_or(0);
     let range = TimeRange {
         start: start.to_rfc3339(),
         end: end.to_rfc3339(),
         label,
     };
-    Ok(compose(range, &issues, &activity, narrative))
+    Ok(compose(range, &issues, &activity, narrative, reviewed))
 }
 
 /// Render a (possibly user-edited) model to a draft with the given formatter,

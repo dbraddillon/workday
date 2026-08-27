@@ -5,7 +5,9 @@
 //! timer and the manual refresh button.
 
 use crate::config::AppSettings;
-use crate::connector::{fake::FakeConnector, jira::JiraConnector, WorkSourceConnector};
+use crate::connector::{
+    fake::FakeConnector, github::GithubConnector, jira::JiraConnector, WorkSourceConnector,
+};
 use crate::db::{repo, Db};
 use chrono::Utc;
 
@@ -25,6 +27,20 @@ pub async fn run_sync(
 
     let result = fetch_and_store(db, settings, jira_token).await;
 
+    // The GitHub review queue is a separate source with its own failure mode, so
+    // it runs outside the Jira result: a broken `gh` must not mark the Jira sync
+    // failed, and a Jira outage must not blank the Reviews tab. Errors here are
+    // dropped on purpose — the tab reports its own staleness from the cache.
+    //
+    // The two queries are independent (open queue vs submitted reviews) and each
+    // spawns a `gh` process, so they run concurrently: sequentially they roughly
+    // doubled the pass duration, and a long pass is what surfaced the in-flight
+    // status bug. Neither holds the db lock across its await.
+    let _ = tokio::join!(
+        sync_review_queue(db, settings),
+        sync_submitted_reviews(db, settings)
+    );
+
     let finished = Utc::now().to_rfc3339();
     {
         let conn = db.0.lock().map_err(|_| "db lock poisoned")?;
@@ -40,6 +56,52 @@ pub async fn run_sync(
         }
     }
     result
+}
+
+/// How far back to look for reviews the user submitted. Independent of the
+/// queue's age window: that one bounds what's worth reviewing, this one has to
+/// cover any standup range the user might pick, including "last week".
+const REVIEW_HISTORY_DAYS: i64 = 14;
+
+/// Build the connector from settings. Nothing here reaches the Keychain - the
+/// `gh` CLI owns the GitHub credential.
+fn github_connector(settings: &AppSettings) -> GithubConnector {
+    GithubConnector {
+        org: settings.github_org.clone(),
+        login: settings.github_login.clone(),
+        teams: settings.github_team_list(),
+        window_days: settings.github_window_days as i64,
+        max_results: settings.github_max_results as usize,
+        include_team_authored: settings.github_include_team_authored,
+    }
+}
+
+/// Fetch the GitHub review queue and replace the cache. Returns the pre-cap
+/// total. A no-op unless enabled and configured.
+pub async fn sync_review_queue(db: &Db, settings: &AppSettings) -> Result<usize, String> {
+    if !settings.github_enabled {
+        return Ok(0);
+    }
+    let (prs, total) = github_connector(settings).fetch_review_queue().await?;
+    let now = Utc::now().to_rfc3339();
+    let conn = db.0.lock().map_err(|_| "db lock poisoned")?;
+    repo::replace_pull_requests(&conn, &prs, &now).map_err(|e| e.to_string())?;
+    Ok(total)
+}
+
+/// Fetch reviews the user submitted and merge them into the cache. Separate call
+/// from the queue: the queue is open PRs, and most reviewed PRs merge within a
+/// day, so a completed review is almost never findable there.
+pub async fn sync_submitted_reviews(db: &Db, settings: &AppSettings) -> Result<usize, String> {
+    if !settings.github_enabled {
+        return Ok(0);
+    }
+    let reviews = github_connector(settings)
+        .fetch_submitted_reviews(REVIEW_HISTORY_DAYS)
+        .await?;
+    let conn = db.0.lock().map_err(|_| "db lock poisoned")?;
+    repo::upsert_submitted_reviews(&conn, &reviews).map_err(|e| e.to_string())?;
+    Ok(reviews.len())
 }
 
 async fn fetch_and_store(

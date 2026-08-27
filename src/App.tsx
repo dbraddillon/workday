@@ -6,6 +6,7 @@ import { Header } from "./components/Header";
 import { TabBar } from "./components/TabBar";
 import { InProgressTab } from "./components/InProgressTab";
 import { RecentTab } from "./components/RecentTab";
+import { ReviewsTab } from "./components/ReviewsTab";
 import { StandupTab } from "./components/StandupTab";
 import { SettingsPanel } from "./components/SettingsPanel";
 
@@ -121,6 +122,12 @@ function App() {
               <RecentTab
                 dataVersion={dataVersion}
                 defaultRange={settings?.default_recent_range ?? "24h"}
+              />
+            )}
+            {tab === "reviews" && (
+              <ReviewsTab
+                dataVersion={dataVersion}
+                onOpenSettings={() => setShowSettings(true)}
               />
             )}
             {tab === "standup" && (

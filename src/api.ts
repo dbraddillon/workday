@@ -7,6 +7,7 @@ import { draftToSlackHtml } from "./util";
 import type {
   AppSettings,
   Issue,
+  ReviewQueue,
   StandupDraft,
   StandupModel,
   SyncStatus,
@@ -40,6 +41,16 @@ export const api = {
 
   /** Whether a `claude` CLI is on PATH so AI polish can work. */
   aiPolishAvailable: () => invoke<boolean>("ai_polish_available"),
+
+  /** Whether `gh` is installed and authenticated, so the Reviews tab can work. */
+  ghAvailable: () => invoke<boolean>("gh_available"),
+  /** Cached review queue; the poll loop refreshes it. */
+  getReviewQueue: () => invoke<ReviewQueue>("get_review_queue"),
+  /** Force a review-queue fetch now. */
+  refreshReviews: () => invoke<ReviewQueue>("refresh_reviews"),
+  /** Tick a PR off as reviewed (persisted independently of the PR cache). */
+  setPrReviewed: (repoName: string, number: number, reviewed: boolean) =>
+    invoke("set_pr_reviewed", { repoName, number, reviewed }),
 
   recordDelivery: (method: string) =>
     invoke("record_delivery", { method }),

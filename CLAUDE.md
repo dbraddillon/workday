@@ -35,6 +35,7 @@ src-tauri/src/
   config.rs         AppSettings (non-secret) + Keychain accessors (secret)
   db/               Local data layer: connection, migrations, repositories
   connector/        WorkSourceConnector trait; jira.rs (real) + fake.rs (dev). Normalizes to model.rs
+                    github.rs is a second source, not a WorkSourceConnector (PRs aren't Issues)
   standup/          compose() → formatter (render) → summarizer (optional AI polish)
   delivery.rs       SlackDeliveryService seam (v1 = copy-to-clipboard)
   sync.rs           SyncCoordinator: pick connector, fetch, store, log sync_run
@@ -110,11 +111,60 @@ Two escape hatches, both intentional:
     whitespace boundary on the opening delimiter is what stops
     `:white_check_mark:` becoming `white<i>check</i>mark`.
 - Add a new source by implementing `WorkSourceConnector` and normalizing to
-  `model.rs`. Selection happens in `sync.rs`.
+  `model.rs`. Selection happens in `sync.rs`. A source that isn't issue-shaped
+  (GitHub PRs) skips the trait but keeps the rule: raw shapes stay in the
+  connector, `model.rs` is the boundary.
+- **A source with its own failure mode syncs outside the Jira result.** In
+  `run_sync`, GitHub errors are dropped rather than folded in: a broken `gh` must
+  not mark the Jira sync failed, and a Jira outage must not blank the Reviews tab.
 - Errors from sync are **non-fatal**: recorded in `sync_runs`, cached data still
   shows, freshness/failure surfaced in the header.
 - Secrets → Keychain only. If you add Slack tokens later, follow the Jira-token
   pattern in `config.rs`.
+
+## Reviews tab (GitHub PR queue)
+
+Second source, off by default (`github_enabled`). Answers "what's waiting on my
+team" when a PR was tagged to the team and never posted in Slack, and feeds the
+standup's PR-reviews line.
+
+- **No new secret.** `connector/github.rs` shells the local `gh` CLI, which owns
+  the credential - same reuse pattern as the `claude` CLI in `summarizer.rs`.
+  Nothing GitHub-related goes in the Keychain. `gh_available()` (runs `gh auth
+  status`) gates the tab, mirroring `ai_polish_available`.
+- **GraphQL, not REST search.** `gh api graphql`. REST `search/issues` is capped
+  at 30 req/min; a GraphQL search costs 1 point against 5000/hour, which is what
+  makes poll-loop refresh affordable. One request carries all the searches as
+  aliases; each row is tagged with its alias, which becomes `reasons`.
+- **Two independent queries, two tables.** They answer different questions and
+  neither substitutes for the other:
+  - `fetch_review_queue` → `pull_requests` (full replace per sync, so a merged PR
+    disappears). Open, non-draft, not approved, within `github_window_days`,
+    union of team-requested and teammate-authored. Trumped by
+    `user-review-requested:` / `assignee:` on the user, which ignore both the
+    window and the approval filter and sort to the top (`is_direct`).
+  - `fetch_submitted_reviews` → `submitted_reviews` (upsert; each fetch is a
+    bounded window and a replace would drop older rows). **~97% of reviewed PRs
+    merge within a day, so a completed review is essentially never findable in the
+    open queue** - without this query the tab shows none of the work you did.
+- **`reviewed-by:` cannot be date-filtered on the review.** GitHub search only
+  offers the PR's `updated:`, which counts old reviews on recently-touched PRs
+  (measured: 26 vs the true 27-on-one-day figure, wrong rows entirely). The fix in
+  `fetch_submitted_reviews`: widen the *search* window, then filter precisely on
+  each review's own `submittedAt` from `reviews(author:)`. Don't "simplify" that
+  back to a single search qualifier.
+- **Copilot is excluded from `human_reviewers`** (`BOT_REVIEWER_MARKERS`). Bot
+  reviews inflate `latestReviews` and make an unreviewed PR look attended-to,
+  which defeats the "no reviewers" flag the tab exists to show.
+- **Standup credit is a UNION, counted distinct per PR.**
+  `repo::review_credit_count_in_range` unions submitted reviews with manual
+  checkoffs: three passes over one PR is one review, and a PR both reviewed and
+  ticked off counts once. Checkoffs live in their own table on purpose - a
+  checkoff has to outlive the PR leaving the queue.
+- The thread line renders **presence, not a count** (`:pull_request: PR reviews`).
+  `StandupModel.reviewed_pr_count` still carries the number for other formatters.
+- Author rosters are chunked at `AUTHORS_PER_QUERY` (40): GitHub search queries
+  cap around 1000 chars.
 
 ## Known v1 limitations (intentional; fix when they bite)
 

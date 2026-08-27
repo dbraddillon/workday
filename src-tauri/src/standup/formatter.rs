@@ -109,6 +109,9 @@ impl ThreadFormatter {
     const PAIRING: &'static str = ":two-peas-in-a-pod:";
     const BLOCKER: &'static str = ":blocker:";
     const POST_SCRUM: &'static str = ":high-five:";
+    /// Prefix for the PR-reviews line. Not user-configurable yet — unlike the
+    /// five thread prompts it isn't part of the team's template.
+    const REVIEWS: &'static str = ":pull_request:";
 }
 
 /// Use the model's prompt emoji if set, else the builtin fallback.
@@ -198,6 +201,13 @@ impl StandupFormatter for ThreadFormatter {
             }
         }
 
+        // PR reviews - present or absent, no count. The count is carried on the
+        // model for other formatters, but the thread line only reports that
+        // reviews happened; a number invites comparison it isn't measuring.
+        if model.reviewed_pr_count > 0 {
+            out.push_str(&format!("{} PR reviews\n", Self::REVIEWS));
+        }
+
         // Any pairing opportunities?
         out.push_str(&format!("{} {}\n", p_pairing, blank_to_dash(&n.pairing)));
 
@@ -267,6 +277,7 @@ mod tests {
                 // Prompt emoji left empty → formatter uses its builtin fallbacks.
                 ..Default::default()
             },
+            reviewed_pr_count: 0,
         }
     }
 
@@ -321,6 +332,41 @@ mod tests {
         // In-progress (WIP mark), done after (checkmark), both bulleted.
         assert!(out.contains("• ABC-1 — Ongoing :work-in-progress:"));
         assert!(out.contains("• ABC-9 — Finished :white_check_mark:"));
+    }
+
+    #[test]
+    fn reviews_line_appears_only_when_reviews_were_checked_off() {
+        let mut m = model(
+            vec![StandupSection {
+                key: "in_progress".into(),
+                title: "In progress".into(),
+                items: vec![item("ABC-1", "First")],
+            }],
+            vec![],
+        );
+
+        // Zero → the line is absent entirely.
+        assert!(!ThreadFormatter.render(&m).contains("PR reviews"));
+
+        // Any count renders the same line: presence, not a tally.
+        m.reviewed_pr_count = 3;
+        let out = ThreadFormatter.render(&m);
+        assert!(out.contains(":pull_request: PR reviews\n"));
+        assert!(!out.contains("(3)"));
+
+        m.reviewed_pr_count = 1;
+        assert!(ThreadFormatter.render(&m).contains(":pull_request: PR reviews\n"));
+        m.reviewed_pr_count = 3;
+        let out = ThreadFormatter.render(&m);
+        // Sits between the working-on block and the pairing prompt.
+        let lines: Vec<&str> = out.lines().collect();
+        let reviews = lines.iter().position(|l| l.contains("PR reviews")).unwrap();
+        let pairing = lines
+            .iter()
+            .position(|l| l.starts_with(":two-peas-in-a-pod:"))
+            .unwrap();
+        assert!(reviews < pairing);
+        assert!(lines[reviews - 1].starts_with("• ABC-1"));
     }
 
     #[test]

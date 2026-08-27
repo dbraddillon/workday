@@ -38,6 +38,7 @@ pub fn compose(
     issues: &[Issue],
     activity: &[ActivityEvent],
     narrative: StandupNarrative,
+    reviewed_pr_count: i64,
 ) -> StandupModel {
     // Index activity by issue for quick note attachment.
     let mut notes_by_issue: BTreeMap<String, Vec<String>> = BTreeMap::new();
@@ -105,5 +106,11 @@ pub fn compose(
         seen.insert(key)
     });
 
-    StandupModel { time_range: range, sections, blockers, narrative }
+    StandupModel {
+        time_range: range,
+        sections,
+        blockers,
+        narrative,
+        reviewed_pr_count,
+    }
 }

@@ -122,6 +122,84 @@ export function SettingsPanel({
       </section>
 
       <section className="settings-section">
+        <div className="settings-row toggle-row">
+          <label>GitHub review queue</label>
+          <input
+            type="checkbox"
+            checked={form.github_enabled}
+            onChange={(e) => set("github_enabled", e.target.checked)}
+          />
+        </div>
+        <p className="settings-hint">
+          Uses the `gh` CLI you already authenticated, so there is no token to enter
+          here.
+        </p>
+        <div data-disabled={!form.github_enabled}>
+          <label className="settings-field">
+            Org
+            <input
+              type="text"
+              value={form.github_org}
+              placeholder="healthsparq"
+              onChange={(e) => set("github_org", e.target.value)}
+            />
+          </label>
+          <label className="settings-field">
+            Your GitHub login
+            <input
+              type="text"
+              value={form.github_login}
+              onChange={(e) => set("github_login", e.target.value)}
+            />
+          </label>
+          <label className="settings-field">
+            Team slugs (comma-separated)
+            <input
+              type="text"
+              value={form.github_teams}
+              placeholder="health-plan-apps-and-services"
+              onChange={(e) => set("github_teams", e.target.value)}
+            />
+          </label>
+          <p className="settings-hint">
+            Keep this narrow. An org-wide team returns hundreds of open PRs.
+          </p>
+          <label className="settings-field">
+            Window (days)
+            <input
+              type="number"
+              min={1}
+              value={form.github_window_days}
+              onChange={(e) => set("github_window_days", Number(e.target.value) || 7)}
+            />
+          </label>
+          <div className="settings-row toggle-row">
+            <label title="A PR opened without tagging anyone is invisible to the team-requested query.">
+              Include PRs authored by teammates
+            </label>
+            <input
+              type="checkbox"
+              checked={form.github_include_team_authored}
+              onChange={(e) => set("github_include_team_authored", e.target.checked)}
+            />
+          </div>
+          <label className="settings-field">
+            Max rows
+            <input
+              type="number"
+              min={1}
+              value={form.github_max_results}
+              onChange={(e) => set("github_max_results", Number(e.target.value) || 40)}
+            />
+          </label>
+          <p className="settings-hint">
+            PRs requested of you directly, or assigned to you, always show
+            regardless of the window.
+          </p>
+        </div>
+      </section>
+
+      <section className="settings-section">
         <h3>Behavior</h3>
         <label className="settings-field">
           Refresh interval (seconds)

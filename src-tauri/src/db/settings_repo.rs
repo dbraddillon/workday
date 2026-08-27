@@ -33,6 +33,13 @@ pub fn load(conn: &Connection) -> AppSettings {
                 "thread_prompt_pairing" => s.thread_prompt_pairing = v,
                 "thread_prompt_blocker" => s.thread_prompt_blocker = v,
                 "thread_prompt_post_scrum" => s.thread_prompt_post_scrum = v,
+                "github_enabled" => s.github_enabled = v == "true",
+                "github_org" => s.github_org = v,
+                "github_login" => s.github_login = v,
+                "github_teams" => s.github_teams = v,
+                "github_window_days" => s.github_window_days = v.parse().unwrap_or(7),
+                "github_include_team_authored" => s.github_include_team_authored = v == "true",
+                "github_max_results" => s.github_max_results = v.parse().unwrap_or(40),
                 _ => {}
             }
         }
@@ -44,7 +51,7 @@ pub fn load(conn: &Connection) -> AppSettings {
 }
 
 pub fn save(conn: &Connection, s: &AppSettings) -> rusqlite::Result<()> {
-    let pairs: [(&str, String); 18] = [
+    let pairs: [(&str, String); 25] = [
         ("jira_base_url", s.jira_base_url.clone()),
         ("jira_email", s.jira_email.clone()),
         ("jira_jql_in_progress", s.jira_jql_in_progress.clone()),
@@ -63,6 +70,16 @@ pub fn save(conn: &Connection, s: &AppSettings) -> rusqlite::Result<()> {
         ("thread_prompt_pairing", s.thread_prompt_pairing.clone()),
         ("thread_prompt_blocker", s.thread_prompt_blocker.clone()),
         ("thread_prompt_post_scrum", s.thread_prompt_post_scrum.clone()),
+        ("github_enabled", s.github_enabled.to_string()),
+        ("github_org", s.github_org.clone()),
+        ("github_login", s.github_login.clone()),
+        ("github_teams", s.github_teams.clone()),
+        ("github_window_days", s.github_window_days.to_string()),
+        (
+            "github_include_team_authored",
+            s.github_include_team_authored.to_string(),
+        ),
+        ("github_max_results", s.github_max_results.to_string()),
     ];
     for (k, v) in pairs {
         conn.execute(

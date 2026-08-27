@@ -410,7 +410,8 @@ body {
 .settings-section {
   margin-bottom: 16px;
 }
-.settings-section[data-disabled="true"] {
+.settings-section[data-disabled="true"],
+[data-disabled="true"] {
   opacity: 0.5;
   pointer-events: none;
 }
@@ -468,4 +469,142 @@ body {
   display: flex;
   justify-content: flex-end;
   padding-top: 4px;
+}
+
+/* ---------- Reviews (GitHub PR queue) ---------- */
+.reviews-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0 6px;
+}
+.reviews-count {
+  flex: 1;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+.linkish {
+  border: none;
+  background: transparent;
+  color: var(--accent);
+  font-size: 11px;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 4px;
+}
+.linkish:hover:not(:disabled) {
+  background: var(--hover);
+}
+.linkish:disabled {
+  color: var(--text-dim);
+  cursor: default;
+}
+.reviews-sorts {
+  display: flex;
+  flex: 1;
+  gap: 2px;
+}
+.linkish-active {
+  color: var(--text);
+  font-weight: 600;
+  background: var(--hover);
+}
+.reviews-note {
+  font-size: 10px;
+  color: var(--text-dim);
+  padding: 0 2px 6px;
+}
+.pr-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 7px 8px;
+  border-radius: 8px;
+}
+.pr-row:hover {
+  background: var(--hover);
+}
+/* Checked-off PRs stay visible but recede — they're the standup count's source. */
+.pr-row-done {
+  opacity: 0.55;
+}
+.pr-row-done .pr-title {
+  text-decoration: line-through;
+}
+.pr-check {
+  margin-top: 2px;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+.pr-main {
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+}
+/* Done rows are clickable as a whole (no checkbox to miss). */
+.pr-row[role="button"] {
+  cursor: pointer;
+}
+.pr-row:focus-visible,
+.pr-main:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.pr-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.pr-repo {
+  font-weight: 600;
+  font-size: 12px;
+}
+.pr-flag {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--accent-text);
+  background: var(--accent);
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+.pr-state {
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--hover);
+  color: var(--text-dim);
+}
+/* No human has reviewed it — the case the tab exists to surface. */
+.pr-state-none {
+  color: var(--danger);
+  font-weight: 600;
+}
+.pr-state-changes {
+  color: var(--danger);
+}
+.pr-state-approved {
+  color: var(--dot-done);
+}
+.pr-size {
+  font-size: 10px;
+  color: var(--text-dim);
+}
+.pr-title {
+  font-size: 12px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 1px;
+}
+.pr-meta {
+  font-size: 10px;
+  color: var(--text-dim);
+  margin-top: 1px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
