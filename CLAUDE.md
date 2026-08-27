@@ -119,6 +119,12 @@ Two escape hatches, both intentional:
   not mark the Jira sync failed, and a Jira outage must not blank the Reviews tab.
 - Errors from sync are **non-fatal**: recorded in `sync_runs`, cached data still
   shows, freshness/failure surfaced in the header.
+- **`sync_status` only reads finished runs.** `start_sync_run` inserts a row with
+  `finished_at NULL` and `ok` at its column default of 0, so a query that takes
+  the newest row unconditionally reports "sync failed" for the entire duration of
+  every sync, then clears when it lands. That was invisible while a pass took ~1s
+  and obvious once the GitHub queries pushed it to ~8s. A `finished_at IS NULL`
+  row means in flight or orphaned by a kill, never a verdict.
 - Secrets → Keychain only. If you add Slack tokens later, follow the Jira-token
   pattern in `config.rs`.
 

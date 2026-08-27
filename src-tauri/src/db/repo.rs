@@ -380,10 +380,15 @@ pub fn finish_sync_run(
 }
 
 pub fn sync_status(conn: &Connection) -> rusqlite::Result<SyncStatus> {
+    // Only *finished* runs carry a verdict. A row with `finished_at IS NULL` is
+    // either in flight or was orphaned by a kill mid-sync, and its `ok` is still
+    // the column default (0) — reading that as a verdict reports "sync failed"
+    // for the whole duration of every sync. That was invisible at ~1s and
+    // obvious once the GitHub queries pushed a run to ~8s.
     let last_run: Option<(String, i64, Option<String>, i64)> = conn
         .query_row(
-            "SELECT COALESCE(finished_at, started_at), ok, message, issue_count
-             FROM sync_runs ORDER BY id DESC LIMIT 1",
+            "SELECT finished_at, ok, message, issue_count
+             FROM sync_runs WHERE finished_at IS NOT NULL ORDER BY id DESC LIMIT 1",
             [],
             |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
         )
@@ -474,6 +479,53 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM issue_activity", [], |r| r.get(0))
             .unwrap();
         assert_eq!(activity_count, 0);
+    }
+
+    // A sync in flight must not read as a failure. `start_sync_run` leaves `ok` at
+    // the column default (0) until it finishes, so taking the newest row
+    // unconditionally reported "sync failed" for the duration of every sync.
+    #[test]
+    fn an_in_flight_run_does_not_report_failure() {
+        let conn = migrated();
+        let id = start_sync_run(&conn, "2026-08-27T10:00:00+00:00").unwrap();
+        finish_sync_run(&conn, id, "2026-08-27T10:00:01+00:00", true, 5, None).unwrap();
+
+        // Second sync starts and has not finished.
+        start_sync_run(&conn, "2026-08-27T10:05:00+00:00").unwrap();
+
+        let s = sync_status(&conn).unwrap();
+        assert!(s.ok, "in-flight sync reported as failed");
+        // Still showing the last completed run, not the pending one.
+        assert_eq!(s.last_run_at.as_deref(), Some("2026-08-27T10:00:01+00:00"));
+        assert_eq!(s.issue_count, 5);
+    }
+
+    // A real failure still surfaces, and a later success clears it.
+    #[test]
+    fn a_finished_failure_surfaces_then_clears() {
+        let conn = migrated();
+        let id = start_sync_run(&conn, "2026-08-27T10:00:00+00:00").unwrap();
+        finish_sync_run(&conn, id, "2026-08-27T10:00:01+00:00", false, 0, Some("boom")).unwrap();
+
+        let s = sync_status(&conn).unwrap();
+        assert!(!s.ok);
+        assert_eq!(s.message.as_deref(), Some("boom"));
+
+        let id2 = start_sync_run(&conn, "2026-08-27T10:05:00+00:00").unwrap();
+        finish_sync_run(&conn, id2, "2026-08-27T10:05:01+00:00", true, 3, None).unwrap();
+        assert!(sync_status(&conn).unwrap().ok);
+    }
+
+    // No finished run yet (first launch, or killed mid-sync) is "not synced yet",
+    // not "failed".
+    #[test]
+    fn no_finished_run_is_not_a_failure() {
+        let conn = migrated();
+        assert!(sync_status(&conn).unwrap().ok);
+        start_sync_run(&conn, "2026-08-27T10:00:00+00:00").unwrap();
+        let s = sync_status(&conn).unwrap();
+        assert!(s.ok);
+        assert_eq!(s.last_run_at, None);
     }
 
     fn fake_pr(repo: &str, number: i64) -> PullRequest {
